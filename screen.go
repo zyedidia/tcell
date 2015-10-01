@@ -29,7 +29,7 @@ type Screen interface {
 	Clear()
 
 	// SetCell sets the cell at the given location.
-	// The ch array contains at most one rune of width > 0, and the
+	// The ch list contains at most one rune of width > 0, and the
 	// runes with zero width (combining marks) must follow the first
 	// non-zero width character.  (If only combining marks are present,
 	// a space character will be filled in.)
@@ -39,14 +39,20 @@ type Screen interface {
 	// undefined effects.  Double wide runes that are printed in the
 	// last column will be replaced with a single width space on output.
 	//
-	// Note that unlike the higher level interfaces, this operates
-	// immediately, without any buffering.
-	//
 	// SetCell may change the cursor location.  Callers should explictly
 	// save and restore cursor state if neccesary.  The cursor visibility
 	// is not affected, so callers probably should hide the cursor when
 	// calling this.
+	//
+	// Note that the results will not be visible until either Show() or Sync()
+	// are called.
 	SetCell(x int, y int, style Style, ch ...rune)
+
+	// SetStyle sets the default style, used when SetCell is called with
+	// StyleDefault, or when Clear is called.  If set to StyleDefault, then
+	// the default is as defined by the user/system/terminal.
+	SetStyle(style Style)
+
 
 	// ShowCursor is used to display the cursor at a given location.
 	// If the coordinates -1, -1 are given or are otherwise outside the
@@ -78,7 +84,23 @@ type Screen interface {
 	// Colors returns the number of colors.  All colors are assumed to
 	// use the ANSI color map.
 	Colors() int
+
+	// Show takes any output that was deferred due to buffering, and
+	// flushes it to the physical display.  It does so in the least
+	// expensive and disruptive manner possible, only making writes that
+	// are believed to actually be necessary.
+	Show()
+
+	// Sync works like Show(), but it updates every visible cell on the
+	// physical display, assuming that it is not synchronized with any
+	// internal model.  This may be both expensive and visually jarring,
+	// so it should only be used when believed to actually be necessary.
+	// Typically this is called as a result of a user-requested redraw
+	// (e.g. to clear up on screen corruption caused by some other program),
+	// or during a resize event.
+	Sync()
 }
+
 
 func NewScreen() (Screen, error) {
 	// First we attempt to obtain a terminfo screen.  This should work

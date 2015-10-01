@@ -17,14 +17,14 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
-	"os"
 	"time"
 
 	"github.com/gdamore/tcell"
 )
 
-func makebox(s tcell.BufferedScreen) {
+func makebox(s tcell.Screen) {
 	w, h := s.Size()
 
 	if w == 0 || h == 0 {
@@ -46,13 +46,20 @@ func makebox(s tcell.BufferedScreen) {
 }
 
 func main() {
-	s, e := tcell.NewBufferedScreen()
+	s, e := tcell.NewScreen()
 	if e != nil {
 		panic(e.Error())
 	}
 	if e = s.Init(); e != nil {
 		panic(e.Error())
 	}
+
+	s.SetStyle(tcell.StyleDefault.
+		Foreground(tcell.ColorBlack).
+		Background(tcell.ColorWhite))
+	s.Clear()
+
+	quit := make(chan struct{})
 	go func() {
 		for {
 			ev := s.PollEvent()
@@ -60,8 +67,8 @@ func main() {
 			case *tcell.EventKey:
 				switch ev.Key() {
 				case tcell.KeyEscape:
-					s.Fini()
-					os.Exit(0)
+					close(quit)
+					return
 				case tcell.KeyCtrlL:
 					s.Sync()
 				}
@@ -71,8 +78,22 @@ func main() {
 		}
 	}()
 
+	cnt := 0
+	dur := time.Duration(0)
+loop:
 	for {
+		select {
+		case <-quit:
+			break loop
+		case <- time.After(time.Millisecond*50):
+		}
+		start := time.Now()
 		makebox(s)
-		time.Sleep(time.Millisecond*10)
+		cnt++
+		dur += time.Now().Sub(start)
 	}
+
+	s.Fini()
+	fmt.Printf("Finished %d boxes in %s\n", cnt, dur)
+	fmt.Printf("Average is %0.3f ms / box\n", (float64(dur) / float64(cnt)) / 1000000.0)
 }

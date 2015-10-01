@@ -40,16 +40,14 @@ import (
 // }
 import "C"
 
-var savedtios map[*tScreen]*C.struct_termios
 
-func init() {
-	savedtios = make(map[*tScreen]*C.struct_termios)
+type termiosPrivate struct {
+	tios	C.struct_termios
 }
 
 func (t *tScreen) termioInit() error {
 	var e error
 	var rv C.int
-	var oldtios C.struct_termios
 	var newtios C.struct_termios
 	var fd C.int
 
@@ -60,11 +58,13 @@ func (t *tScreen) termioInit() error {
 		goto failed
 	}
 
+	t.tiosp = &termiosPrivate{}
+
 	fd = C.int(t.out.Fd())
-	if rv, e = C.tcgetattr(fd, &oldtios); rv != 0 {
+	if rv, e = C.tcgetattr(fd, &t.tiosp.tios); rv != 0 {
 		goto failed
 	}
-	newtios = oldtios
+	newtios = t.tiosp.tios
 	newtios.c_iflag &^= C.IGNBRK | C.BRKINT | C.PARMRK |
 		C.ISTRIP | C.INLCR | C.IGNCR |
 		C.ICRNL | C.IXON
@@ -86,7 +86,6 @@ func (t *tScreen) termioInit() error {
 		goto failed
 	}
 
-	savedtios[t] = &oldtios
 	signal.Notify(t.sigwinch, syscall.SIGWINCH)
 
 	if w, h, e := t.getWinSize(); e == nil && w != 0 && h != 0 {
@@ -110,12 +109,11 @@ func (t *tScreen) termioFini() {
 
 	signal.Stop(t.sigwinch)
 
+	<-t.indoneq
+
 	if t.out != nil {
-		if oldtios, ok := savedtios[t]; ok {
-			fd := C.int(t.out.Fd())
-			C.tcsetattr(fd, C.TCSANOW, oldtios)
-			delete(savedtios, t)
-		}
+		fd := C.int(t.out.Fd())
+		C.tcsetattr(fd, C.TCSANOW|C.TCSAFLUSH, &t.tiosp.tios)
 		t.out.Close()
 	}
 	if t.in != nil {

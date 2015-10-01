@@ -28,7 +28,7 @@ import (
 // This program just shows simple mouse and keyboard events.  Press ESC to
 // exit.
 func main() {
-	s, e := tcell.NewBufferedScreen()
+	s, e := tcell.NewScreen()
 	if e != nil {
 		fmt.Printf("oops: %v", e)
 	}

@@ -17,12 +17,20 @@
 package tcell
 
 import (
-	// "fmt"
+	"sync"
 	"syscall"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/mattn/go-runewidth"
 )
+
+type cCell struct {
+	ch	[]rune
+	width	uint8
+	style	Style
+	dirty	bool
+}
 
 type cScreen struct {
 	in    syscall.Handle
@@ -30,6 +38,9 @@ type cScreen struct {
 	mbtns uint32 // debounce mouse buttons
 	evch  chan Event
 	quit  chan struct{}
+	curx  int
+	cury  int
+	style Style
 
 	w int
 	h int
@@ -37,6 +48,9 @@ type cScreen struct {
 	oscreen consoleInfo
 	ocursor cursorInfo
 	omode   uint32
+	cells	[]cCell
+
+	sync.Mutex
 }
 
 // all Windows systems are little endian
@@ -58,7 +72,7 @@ var (
 	procFillConsoleOutputCharacter   = k32.NewProc("FillConsoleOutputCharacterW")
 	procSetConsoleWindowInfo         = k32.NewProc("SetConsoleWindowInfo")
 	procSetConsoleScreenBufferSize   = k32.NewProc("SetConsoleScreenBufferSize")
-	procSetConsoleActiveScreenBuffer = k32.NewProc("SetConsoleActiveScreenBuffer")
+	procSetConsoleTextAttributes = k32.NewProc("SetConsoleTextAttributes")
 )
 
 // We have to bring in the kernel32.dll directly, so we can get access to some
@@ -97,7 +111,6 @@ func (s *cScreen) Init() error {
 	s.resize()
 	s.Clear()
 	s.HideCursor()
-	//procSetConsoleActiveScreenBuffer.Call(uintptr(s.out))
 	go s.scanInput()
 
 	return nil
@@ -161,25 +174,34 @@ type rect struct {
 	bottom int16
 }
 
-func (s *cScreen) ShowCursor(x, y int) {
-	var curinfo cursorInfo
+func (s *cScreen) showCursor() {
+	s.setCursorInfo(&cursorInfo{size:100, visible: 1})
+}
 
-	s.getCursorInfo(&curinfo)
-	if x < 0 || y < 0 {
-		if curinfo.visible == 0 {
-			return
-		}
-		curinfo.visible = 0
-		s.setCursorInfo(&curinfo)
+func (s *cScreen) hideCursor() {
+	s.setCursorInfo(&cursorInfo{size:1, visible: 0})
+}
+
+func (s *cScreen) ShowCursor(x, y int) {
+	s.Lock()
+	s.curx = x
+	s.cury = y
+	s.Unlock()
+}
+
+func (s*cScreen) doCursor() {
+	x, y := s.curx, s.cury
+
+	if x < 0 || y < 0 || x >= s.w || y >= s.h {
+		s.hideCursor()
 	} else {
-		curinfo.visible = 1
 		s.setCursorPos(x, y)
-		s.setCursorInfo(&curinfo)
+		s.showCursor()
 	}
 }
 
 func (c *cScreen) HideCursor() {
-	c.ShowCursor(10, 5)
+	c.ShowCursor(-1, -1)
 }
 
 type charInfo struct {
@@ -553,7 +575,67 @@ func mapStyle(style Style) uint16 {
 	return attr
 }
 
+func (s *cScreen) sortRunes(ch ...rune) ([]rune, uint8) {
+	var mainc rune
+        var width uint8
+        var compc []rune
+
+        width = 1
+        mainc = ' '
+        for _, r := range ch {
+                if r < ' ' {
+                        // skip over non-printable control characters
+                        continue
+                }
+                switch runewidth.RuneWidth(r) {
+                case 1:
+                        mainc = r
+                        width = 1
+                case 2:
+                        mainc = r
+                        width = 2
+                case 0:
+                        compc = append(compc, r)
+                }
+        }
+	return append([]rune{mainc}, compc...), width
+}
+
 func (s *cScreen) SetCell(x, y int, style Style, ch ...rune) {
+
+	r, width := s.sortRunes(ch...)
+
+	s.Lock()
+	if x < 0 || y < 0 || x >= int(s.w) || y >= int(s.h) {
+		s.Unlock()
+		return
+	}
+
+	cell := &s.cells[(y*int(s.w))+x]
+	match := true
+	if len(r) != len(cell.ch) || style != cell.style {
+		match = false
+	}  else {
+		for i := range r {
+			if r[i] != cell.ch[i] {
+				match = false
+				break
+			}
+		}
+	}
+	if match {
+		s.Unlock()
+		return
+	}
+	cell.style = style
+	cell.ch = r
+	cell.width = width
+	cell.dirty = true
+	s.Unlock()
+
+	return
+
+	/*
 	r := ' '
 	w := 0
 	for i := range ch {
@@ -563,12 +645,21 @@ func (s *cScreen) SetCell(x, y int, style Style, ch ...rune) {
 		}
 	}
 
-	// Windows console lacks support for combining chars
-	if w == 0 {
-		r = ' '
-		w = 1
-	}
+	index := (y * s.w) + x
+	attr := mapStyle(style)
 
+	// don't bother recording a dirty flag, we're going to send the entire
+	// screen anyway.
+	s.Lock()
+	if r != s.cells[index].ch || attr != s.cells[index].attr {
+		s.cells[index].ch = r
+		s.cells[index].attr = attr
+	}
+	s.dirty = 1
+	s.Unlock()
+	*/
+
+	/*
 	rec := rect{left: int16(x), right: int16(x), top: int16(y), bottom: int16(y)}
 	pos := coord{x: int16(0), y: int16(0)}
 	siz := coord{x: 1, y: 1}
@@ -580,6 +671,83 @@ func (s *cScreen) SetCell(x, y int, style Style, ch ...rune) {
 		siz.uintptr(),
 		pos.uintptr(),
 		uintptr(unsafe.Pointer(&rec)))
+	*/
+}
+
+func (s *cScreen) writeString(x, y int, style Style, ch []uint16) {
+	// we assume the caller has hidden the cursor
+	nw := uint32(len(ch))
+	procSetConsoleTextAttributes.Call(
+		uintptr(s.out),
+		uintptr(mapStyle(style)))
+	s.setCursorPos(x, y)
+	syscall.WriteConsole(s.out, &ch[0], nw, &nw, nil)
+}
+
+func (s *cScreen) draw() {
+	// allocate a scratch line bit enough for no combining chars.
+	// if you have combining characters, you may pay for extra allocs.
+	buf := make([]uint16, 0, s.w)
+	wcs := buf[:]
+	style := Style(-1)	// invalid attribute
+	
+	x, y := -1, -1
+
+	for row := 0; row < int(s.h); row++ {
+		width := 1
+		for col := 0; col < int(s.w); col += width {
+
+			cell := &s.cells[(row * s.w) + s.h]
+			width = int(cell.width)
+
+			if !cell.dirty || style != cell.style {
+				s.writeString(x, y, style, wcs)
+				wcs = buf[0:0]
+				style = Style(-1)
+				if !cell.dirty {
+					continue
+				}
+			}
+			if len(wcs) == 0 {
+				style = cell.style
+				x = col
+				y = row
+			}
+			wcs = append(wcs, utf16.Encode(cell.ch)...)
+		}
+		s.writeString(x, y, style, wcs)	
+	}
+/*
+	area := rect{left: 0, top: 0, right: s.w-1, bottom: s.h-1}
+	procWriteConsoleOutput.Call(
+		uintptr(s.out),
+		uinptr(unsafe.Pointer(&s.cells)),
+		coord{s.w, s.h}.uintptr(),
+		coord{0, 0}.uintptr(),
+		uintptr(unsafe.Pointer(&area)))
+		
+*/
+}
+
+func (s *cScreen) Show() {
+	s.Lock()
+	s.hideCursor()
+	s.resize()
+	s.draw()
+	s.doCursor()
+	s.Unlock()
+}
+
+func (s *cScreen) Sync() {
+	s.Lock()
+	for i := range s.cells {
+		s.cells[i].dirty = true
+	}
+	s.hideCursor()
+	s.resize()
+	s.draw()
+	s.doCursor()
+	s.Unlock()
 }
 
 type consoleInfo struct {
@@ -622,10 +790,9 @@ func (s *cScreen) setBufferSize(x, y int) {
 
 func (s *cScreen) Size() (int, int) {
 
-	info := consoleInfo{}
-	s.getConsoleInfo(&info)
-	w := int((info.win.right - info.win.left) + 1)
-	h := int((info.win.bottom - info.win.top) + 1)
+	s.Lock()
+	w, h := s.w, s.h
+	s.Unlock()
 
 	return w, h
 }
@@ -637,9 +804,22 @@ func (s *cScreen) resize() {
 
 	w := int((info.win.right - info.win.left) + 1)
 	h := int((info.win.bottom - info.win.top) + 1)
+
 	if s.w == w && s.h == h {
 		return
 	}
+
+	newc := make([]cCell, w*h)
+	for row := 0; row < h && row < s.h; row++ {
+		for col := 0; col < w && col < s.w; col++ {
+			newc[(row*w)+col] = s.cells[(row*s.w)+col]
+			newc[(row*w)+col].dirty = true
+		}
+	}
+	s.cells = newc
+	s.w = w
+	s.h = h
+
 	r := rect{0, 0, int16(w - 1), int16(h - 1)}
 	procSetConsoleWindowInfo.Call(
 		uintptr(s.out),
@@ -647,9 +827,12 @@ func (s *cScreen) resize() {
 		uintptr(unsafe.Pointer(&r)))
 
 	s.setBufferSize(w, h)
+
+	s.PostEvent(NewEventResize(w, h))
 }
 
 func (s *cScreen) Clear() {
+
 	pos := coord{0, 0}
 	attr := uint16(0x7) // default white fg, black bg)
 	x, y := s.Size()
@@ -689,4 +872,10 @@ func (s *cScreen) getMode(v *uint32) {
 	procGetConsoleMode.Call(
 		uintptr(s.in),
 		uintptr(unsafe.Pointer(v)))
+}
+
+func (s *cScreen) SetStyle(style Style) {
+	s.Lock()
+	s.style = style
+	s.Unlock()
 }

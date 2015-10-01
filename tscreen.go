@@ -51,6 +51,13 @@ func NewTerminfoScreen() (Screen, error) {
 	return t, nil
 }
 
+type tCell struct {
+	ch	[]rune
+	dirty	bool
+	width	uint8
+	style	Style
+}
+
 // tScreen represents a screen backed by a terminfo implementation.
 type tScreen struct {
 	ti       *Terminfo
@@ -58,21 +65,28 @@ type tScreen struct {
 	h        int
 	in       *os.File
 	out      *os.File
-	cinvis   bool
 	curstyle Style
+	style	 Style
 	evch     chan Event
 	sigwinch chan os.Signal
 	quit     chan struct{}
+	indoneq  chan struct{}
 	keys     map[Key][]byte
 	cx       int
 	cy       int
 	mouse    []byte
+	cells	 []tCell
+	clear	 bool
+	cursorx  int
+	cursory  int
+	tiosp    *termiosPrivate
 
 	sync.Mutex
 }
 
 func (t *tScreen) Init() error {
 	t.evch = make(chan Event, 2)
+	t.indoneq = make(chan struct{})
 	if e := t.termioInit(); e != nil {
 		return e
 	}
@@ -88,7 +102,11 @@ func (t *tScreen) Init() error {
 	t.quit = make(chan struct{})
 	t.cx = -1
 	t.cy = -1
+	t.style = StyleDefault
 
+	t.cells = make([]tCell, t.w * t.h)
+	t.cursorx = -1
+	t.cursory = -1
 	go t.inputLoop()
 
 	return nil
@@ -139,6 +157,9 @@ func (t *tScreen) prepareKeys() {
 func (t *tScreen) Fini() {
 	ti := t.ti
 	out := t.out
+	if t.quit != nil {
+		close(t.quit)
+	}
 	io.WriteString(out, ti.ShowCursor)
 	io.WriteString(out, ti.AttrOff)
 	io.WriteString(out, ti.Clear)
@@ -148,38 +169,102 @@ func (t *tScreen) Fini() {
 
 	t.w = 0
 	t.h = 0
+	t.cells = nil
 	t.curstyle = Style(-1)
-	t.cinvis = false
-	if t.quit != nil {
-		close(t.quit)
-	} else {
-		t.termioFini()
-	}
+	t.clear = false
+	t.termioFini()
 }
 
-func (t *tScreen) Clear() {
-	return
+func (t *tScreen) SetStyle(style Style) {
 	t.Lock()
-	t.curstyle = Style(-1)
-	t.cx = -1
-	t.cy = -1
-	io.WriteString(t.out, t.ti.Clear)
+	t.style = style
 	t.Unlock()
 }
 
+func (t *tScreen) Clear() {
+
+	t.Lock()
+	for i := range t.cells {
+		t.cells[i].ch = nil
+		t.cells[i].style = t.style
+		t.cells[i].dirty = true
+	}
+	t.Unlock()
+}
+
+func (t *tScreen) sortRunes(ch ...rune) ([]rune, uint8) {
+	var mainc rune
+	var width uint8
+	var compc []rune
+
+	width = 1
+	mainc = ' '
+	for _, r := range ch {
+		if r < ' ' {
+			// skip over non-printable control characters
+			continue
+		}
+		switch runewidth.RuneWidth(r) {
+		case 1:
+			mainc = r
+			width = 1
+		case 2:
+			mainc = r
+			width = 2
+		case 0:
+			compc = append(compc, r)
+		}
+	}
+
+	return append([]rune{mainc}, compc...), width
+}	
+
 func (t *tScreen) SetCell(x, y int, style Style, ch ...rune) {
-	// XXX: this would be a place to check for hazeltine not being able
-	// to display ~, or possibly non-UTF-8 locales, etc.
+
+	r, width := t.sortRunes(ch...)
 
 	t.Lock()
 	if x < 0 || y < 0 || x >= t.w || y >= t.h {
 		t.Unlock()
 		return
 	}
+	cell := &t.cells[(y*t.w)+x]
+	match := true
+	if len(r) != len(cell.ch) || style != cell.style {
+		match = false
+	} else {
+		for i := range r {
+			if r[i] != cell.ch[i] {
+				match = false
+				break
+			}
+		}
+	}
+	if match {
+		t.Unlock()
+		return
+	}
+
+	cell.style = style
+	cell.ch = r
+	cell.width = width
+	cell.dirty = true
+
+	t.Unlock()
+}
+
+func (t *tScreen) drawCell(x, y int, cell *tCell) {
+	// XXX: this would be a place to check for hazeltine not being able
+	// to display ~, or possibly non-UTF-8 locales, etc.
+
 	ti := t.ti
 
 	if t.cy != y || t.cx != x {
 		io.WriteString(t.out, ti.TGoto(x, y))
+	}
+	style := cell.style
+	if style == StyleDefault {
+		style = t.style
 	}
 	if style != t.curstyle {
 		fg, bg, attrs := style.Decompose()
@@ -210,62 +295,94 @@ func (t *tScreen) SetCell(x, y int, style Style, ch ...rune) {
 		}
 		t.curstyle = style
 	}
-	// now emit a character - taking care to not overrun width with a
+	// now emit runes - taking care to not overrun width with a
 	// wide character, and to ensure that we emit exactly one regular
 	// character followed up by any residual combing characters
-	mainc := ' '
-	combc := ""
-	width := 1
 
-	for _, c := range ch {
-		if c < ' ' {
-			// no control charcters allowed
-			continue
-		}
-		switch runewidth.RuneWidth(c) {
-		case 0:
-			combc = combc + string(c)
-		case 1:
-			mainc = c
-			width = 1
-		case 2:
-			mainc = c
-			width = 2
-			if x >= t.w-1 {
-				// too wide to fit; emit space instead
-				mainc = ' '
-				width = 1
-			}
-		}
+	width := int(cell.width)
+	ch := cell.ch
+	str := " "
+	if width == 2 && x >= t.w-1 {
+		// too wide to fit; emit space instead
+		width = 1
+	} else if len(ch) == 0 {
+		width = 1
+	} else {
+		str = string(ch)
 	}
-	io.WriteString(t.out, string(mainc))
-	io.WriteString(t.out, combc)
+	io.WriteString(t.out, str)
 	t.cy = y
 	t.cx = x + width
-	t.Unlock()
 }
 
 func (t *tScreen) ShowCursor(x, y int) {
 	t.Lock()
+	t.cursorx = x
+	t.cursory = y
+	t.Unlock()
+}
+
+func (t *tScreen) HideCursor() {
+	t.ShowCursor(-1, -1)
+}
+
+func (t *tScreen) showCursor() {
+	
+	x, y := t.cursorx, t.cursory
 	if x < 0 || y < 0 || x >= t.w || y >= t.h {
-		t.cinvis = true
 		io.WriteString(t.out, t.ti.HideCursor)
-		t.Unlock()
 		return
 	}
 	if t.cx != x || t.cy != y {
 		io.WriteString(t.out, t.ti.TGoto(x, y))
 	}
 	io.WriteString(t.out, t.ti.ShowCursor)
-
-	t.cinvis = false
 	t.cx = x
 	t.cy = y
+}
+
+func (t *tScreen) Show() {
+	t.Lock()
+	t.resize()
+	t.draw()
 	t.Unlock()
 }
 
-func (t *tScreen) HideCursor() {
-	t.ShowCursor(-1, -1)
+func (t *tScreen) clearScreen() {
+	io.WriteString(t.out, t.ti.Clear)
+	t.clear = false
+}
+
+func (t *tScreen) hideCursor() {
+	// does not update cursor position
+	io.WriteString(t.out, t.ti.HideCursor)
+}
+
+func (t *tScreen) draw() {
+	// clobber cursor position, because we're gonna change it all
+	t.cx = -1
+	t.cy = -1
+
+	// hide the cursor while we move stuff around
+	t.hideCursor()
+
+	if t.clear {
+		t.clearScreen()
+	}
+
+	for row := 0; row < t.h; row++ {
+		for col := 0; col < t.w; col++ {
+			cell := &t.cells[(row*t.w)+col]
+			if !cell.dirty {
+				continue
+			}
+			t.drawCell(col, row, cell)
+			cell.dirty = false
+		}
+	}
+
+	// restore the cursor
+	t.showCursor()
 }
 
 func (t *tScreen) EnableMouse() {
@@ -281,7 +398,6 @@ func (t *tScreen) DisableMouse() {
 }
 
 func (t *tScreen) Size() (int, int) {
-	// XXX: get underlying size
 	t.Lock()
 	w, h := t.w, t.h
 	t.Unlock()
@@ -290,17 +406,24 @@ func (t *tScreen) Size() (int, int) {
 
 func (t *tScreen) resize() {
 	var ev Event
-	t.Lock()
 	if w, h, e := t.getWinSize(); e == nil {
 		if w != t.w || h != t.h {
 			ev = NewEventResize(w, h)
-			t.w = w
-			t.h = h
 			t.cx = -1
 			t.cy = -1
+
+			newc := make([]tCell, w*h)
+			for row := 0; row < h && row < t.h; row++ {
+				for col := 0; col < w && col < t.w; col++ {
+					newc[(row*w)+col] = t.cells[(row*t.w)+col]
+					newc[(row*w)+col].dirty = true
+				}
+			}
+			t.cells = newc
+			t.w = w
+			t.h = h
 		}
 	}
-	t.Unlock()
 	if ev != nil {
 		t.PostEvent(ev)
 	}
@@ -443,10 +566,12 @@ func (t *tScreen) inputLoop() {
 	for {
 		select {
 		case <-t.quit:
-			t.termioFini()
+			close(t.indoneq)
 			return
 		case <-t.sigwinch:
+			t.Lock()
 			t.resize()
+			t.Unlock()
 			continue
 		default:
 		}
@@ -462,11 +587,22 @@ func (t *tScreen) inputLoop() {
 			continue
 		case nil:
 		default:
-			// XXX: post error event?
+			close(t.indoneq)
 			return
 		}
 		buf.Write(chunk[:n])
 		// Now we need to parse the input buffer for events
 		t.scanInput(buf, false)
 	}
+}
+
+func (t *tScreen) Sync() {
+	t.Lock()
+	t.resize()
+	t.clear = true
+	for i := range t.cells {
+		t.cells[i].dirty = true
+	}
+	t.draw()
+	t.Unlock()
 }

@@ -303,7 +303,7 @@ func (b *bScreen) DisableMouse() {
 	b.Unlock()
 }
 
-func NewBufferedScreen() (BufferedScreen, error) {
+func xNewBufferedScreen() (BufferedScreen, error) {
 	s, e := NewScreen()
 	if e != nil {
 		return nil, e
