@@ -21,8 +21,6 @@ import (
 	"strconv"
 	"sync"
 	"unicode/utf8"
-
-	"github.com/mattn/go-runewidth"
 )
 
 func NewTerminfoScreen() (Screen, error) {
@@ -51,13 +49,6 @@ func NewTerminfoScreen() (Screen, error) {
 	return t, nil
 }
 
-type tCell struct {
-	ch	[]rune
-	dirty	bool
-	width	uint8
-	style	Style
-}
-
 // tScreen represents a screen backed by a terminfo implementation.
 type tScreen struct {
 	ti       *Terminfo
@@ -66,7 +57,7 @@ type tScreen struct {
 	in       *os.File
 	out      *os.File
 	curstyle Style
-	style	 Style
+	style    Style
 	evch     chan Event
 	sigwinch chan os.Signal
 	quit     chan struct{}
@@ -75,8 +66,8 @@ type tScreen struct {
 	cx       int
 	cy       int
 	mouse    []byte
-	cells	 []tCell
-	clear	 bool
+	cells    []Cell
+	clear    bool
 	cursorx  int
 	cursory  int
 	tiosp    *termiosPrivate
@@ -104,7 +95,7 @@ func (t *tScreen) Init() error {
 	t.cy = -1
 	t.style = StyleDefault
 
-	t.cells = make([]tCell, t.w * t.h)
+	t.cells = ResizeCells(nil, 0, 0, t.w, t.h)
 	t.cursorx = -1
 	t.cursory = -1
 	go t.inputLoop()
@@ -184,44 +175,11 @@ func (t *tScreen) SetStyle(style Style) {
 func (t *tScreen) Clear() {
 
 	t.Lock()
-	for i := range t.cells {
-		t.cells[i].ch = nil
-		t.cells[i].style = t.style
-		t.cells[i].dirty = true
-	}
+	ClearCells(t.cells, t.style)
 	t.Unlock()
 }
 
-func (t *tScreen) sortRunes(ch ...rune) ([]rune, uint8) {
-	var mainc rune
-	var width uint8
-	var compc []rune
-
-	width = 1
-	mainc = ' '
-	for _, r := range ch {
-		if r < ' ' {
-			// skip over non-printable control characters
-			continue
-		}
-		switch runewidth.RuneWidth(r) {
-		case 1:
-			mainc = r
-			width = 1
-		case 2:
-			mainc = r
-			width = 2
-		case 0:
-			compc = append(compc, r)
-		}
-	}
-
-	return append([]rune{mainc}, compc...), width
-}	
-
 func (t *tScreen) SetCell(x, y int, style Style, ch ...rune) {
-
-	r, width := t.sortRunes(ch...)
 
 	t.Lock()
 	if x < 0 || y < 0 || x >= t.w || y >= t.h {
@@ -229,31 +187,11 @@ func (t *tScreen) SetCell(x, y int, style Style, ch ...rune) {
 		return
 	}
 	cell := &t.cells[(y*t.w)+x]
-	match := true
-	if len(r) != len(cell.ch) || style != cell.style {
-		match = false
-	} else {
-		for i := range r {
-			if r[i] != cell.ch[i] {
-				match = false
-				break
-			}
-		}
-	}
-	if match {
-		t.Unlock()
-		return
-	}
-
-	cell.style = style
-	cell.ch = r
-	cell.width = width
-	cell.dirty = true
-
+	cell.SetCell(ch, style)
 	t.Unlock()
 }
 
-func (t *tScreen) drawCell(x, y int, cell *tCell) {
+func (t *tScreen) drawCell(x, y int, cell *Cell) {
 	// XXX: this would be a place to check for hazeltine not being able
 	// to display ~, or possibly non-UTF-8 locales, etc.
 
@@ -262,7 +200,7 @@ func (t *tScreen) drawCell(x, y int, cell *tCell) {
 	if t.cy != y || t.cx != x {
 		io.WriteString(t.out, ti.TGoto(x, y))
 	}
-	style := cell.style
+	style := cell.Style
 	if style == StyleDefault {
 		style = t.style
 	}
@@ -299,16 +237,17 @@ func (t *tScreen) drawCell(x, y int, cell *tCell) {
 	// wide character, and to ensure that we emit exactly one regular
 	// character followed up by any residual combing characters
 
-	width := int(cell.width)
-	ch := cell.ch
-	str := " "
+	width := int(cell.Width)
+	var str string
+	if len(cell.Ch) == 0 {
+		str = " "
+	} else {
+		str = string(cell.Ch)
+	}
 	if width == 2 && x >= t.w-1 {
 		// too wide to fit; emit space instead
 		width = 1
-	} else if len(ch) == 0 {
-		width = 1
-	} else {
-		str = string(ch)
+		str = " "
 	}
 	io.WriteString(t.out, str)
 	t.cy = y
@@ -327,7 +266,7 @@ func (t *tScreen) HideCursor() {
 }
 
 func (t *tScreen) showCursor() {
-	
+
 	x, y := t.cursorx, t.cursory
 	if x < 0 || y < 0 || x >= t.w || y >= t.h {
 		io.WriteString(t.out, t.ti.HideCursor)
@@ -373,11 +312,11 @@ func (t *tScreen) draw() {
 	for row := 0; row < t.h; row++ {
 		for col := 0; col < t.w; col++ {
 			cell := &t.cells[(row*t.w)+col]
-			if !cell.dirty {
+			if !cell.Dirty {
 				continue
 			}
 			t.drawCell(col, row, cell)
-			cell.dirty = false
+			cell.Dirty = false
 		}
 	}
 
@@ -412,14 +351,7 @@ func (t *tScreen) resize() {
 			t.cx = -1
 			t.cy = -1
 
-			newc := make([]tCell, w*h)
-			for row := 0; row < h && row < t.h; row++ {
-				for col := 0; col < w && col < t.w; col++ {
-					newc[(row*w)+col] = t.cells[(row*t.w)+col]
-					newc[(row*w)+col].dirty = true
-				}
-			}
-			t.cells = newc
+			t.cells = ResizeCells(t.cells, t.w, t.h, w, h)
 			t.w = w
 			t.h = h
 		}
@@ -600,9 +532,7 @@ func (t *tScreen) Sync() {
 	t.Lock()
 	t.resize()
 	t.clear = true
-	for i := range t.cells {
-		t.cells[i].dirty = true
-	}
+	InvalidateCells(t.cells)
 	t.draw()
 	t.Unlock()
 }

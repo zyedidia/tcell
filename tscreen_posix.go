@@ -40,9 +40,8 @@ import (
 // }
 import "C"
 
-
 type termiosPrivate struct {
-	tios	C.struct_termios
+	tios C.struct_termios
 }
 
 func (t *tScreen) termioInit() error {

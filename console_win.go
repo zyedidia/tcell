@@ -26,10 +26,10 @@ import (
 )
 
 type cCell struct {
-	ch	[]rune
-	width	uint8
-	style	Style
-	dirty	bool
+	ch    []rune
+	width uint8
+	style Style
+	dirty bool
 }
 
 type cScreen struct {
@@ -50,7 +50,7 @@ type cScreen struct {
 	ocursor cursorInfo
 	oimode  uint32
 	oomode  uint32
-	cells	[]cCell
+	cells   []cCell
 
 	sync.Mutex
 }
@@ -62,18 +62,18 @@ var k32 = syscall.NewLazyDLL("kernel32.dll")
 // characters (Unicode) are in use.  The documentation refers to them
 // without this suffix, as the resolution is made via preprocessor.
 var (
-	procReadConsoleInput             = k32.NewProc("ReadConsoleInputW")
-	procGetConsoleCursorInfo         = k32.NewProc("GetConsoleCursorInfo")
-	procSetConsoleCursorInfo         = k32.NewProc("SetConsoleCursorInfo")
-	procSetConsoleCursorPosition     = k32.NewProc("SetConsoleCursorPosition")
-	procSetConsoleMode               = k32.NewProc("SetConsoleMode")
-	procGetConsoleMode               = k32.NewProc("GetConsoleMode")
-	procGetConsoleScreenBufferInfo   = k32.NewProc("GetConsoleScreenBufferInfo")
-	procFillConsoleOutputAttribute   = k32.NewProc("FillConsoleOutputAttribute")
-	procFillConsoleOutputCharacter   = k32.NewProc("FillConsoleOutputCharacterW")
-	procSetConsoleWindowInfo         = k32.NewProc("SetConsoleWindowInfo")
-	procSetConsoleScreenBufferSize   = k32.NewProc("SetConsoleScreenBufferSize")
-	procSetConsoleTextAttribute = k32.NewProc("SetConsoleTextAttribute")
+	procReadConsoleInput           = k32.NewProc("ReadConsoleInputW")
+	procGetConsoleCursorInfo       = k32.NewProc("GetConsoleCursorInfo")
+	procSetConsoleCursorInfo       = k32.NewProc("SetConsoleCursorInfo")
+	procSetConsoleCursorPosition   = k32.NewProc("SetConsoleCursorPosition")
+	procSetConsoleMode             = k32.NewProc("SetConsoleMode")
+	procGetConsoleMode             = k32.NewProc("GetConsoleMode")
+	procGetConsoleScreenBufferInfo = k32.NewProc("GetConsoleScreenBufferInfo")
+	procFillConsoleOutputAttribute = k32.NewProc("FillConsoleOutputAttribute")
+	procFillConsoleOutputCharacter = k32.NewProc("FillConsoleOutputCharacterW")
+	procSetConsoleWindowInfo       = k32.NewProc("SetConsoleWindowInfo")
+	procSetConsoleScreenBufferSize = k32.NewProc("SetConsoleScreenBufferSize")
+	procSetConsoleTextAttribute    = k32.NewProc("SetConsoleTextAttribute")
 )
 
 // We have to bring in the kernel32.dll directly, so we can get access to some
@@ -184,11 +184,11 @@ type rect struct {
 }
 
 func (s *cScreen) showCursor() {
-	s.setCursorInfo(&cursorInfo{size:100, visible: 1})
+	s.setCursorInfo(&cursorInfo{size: 100, visible: 1})
 }
 
 func (s *cScreen) hideCursor() {
-	s.setCursorInfo(&cursorInfo{size:1, visible: 0})
+	s.setCursorInfo(&cursorInfo{size: 1, visible: 0})
 }
 
 func (s *cScreen) ShowCursor(x, y int) {
@@ -198,7 +198,7 @@ func (s *cScreen) ShowCursor(x, y int) {
 	s.Unlock()
 }
 
-func (s*cScreen) doCursor() {
+func (s *cScreen) doCursor() {
 	x, y := s.curx, s.cury
 
 	if x < 0 || y < 0 || x >= s.w || y >= s.h {
@@ -454,7 +454,8 @@ func (s *cScreen) getConsoleInput() error {
 			return nil
 		}
 		for krec.repeat > 0 {
-			s.PostEvent(NewEventKey(key, rune(krec.ch), mod2mask(krec.mod)))
+			s.PostEvent(NewEventKey(key, rune(krec.ch),
+				mod2mask(krec.mod)))
 			krec.repeat--
 		}
 
@@ -491,7 +492,8 @@ func (s *cScreen) getConsoleInput() error {
 			btns |= Button5
 		}
 
-		s.PostEvent(NewEventMouse(int(mrec.x), int(mrec.y), btns, mod2mask(mrec.mod)))
+		s.PostEvent(NewEventMouse(int(mrec.x), int(mrec.y), btns,
+			mod2mask(mrec.mod)))
 
 	case resizeEvent:
 		var rrec resizeRecord
@@ -587,27 +589,27 @@ func mapStyle(style Style) uint16 {
 
 func (s *cScreen) sortRunes(ch ...rune) ([]rune, uint8) {
 	var mainc rune
-        var width uint8
-        var compc []rune
+	var width uint8
+	var compc []rune
 
-        width = 1
-        mainc = ' '
-        for _, r := range ch {
-                if r < ' ' {
-                        // skip over non-printable control characters
-                        continue
-                }
-                switch runewidth.RuneWidth(r) {
-                case 1:
-                        mainc = r
-                        width = 1
-                case 2:
-                        mainc = r
-                        width = 2
-                case 0:
-                        compc = append(compc, r)
-                }
-        }
+	width = 1
+	mainc = ' '
+	for _, r := range ch {
+		if r < ' ' {
+			// skip over non-printable control characters
+			continue
+		}
+		switch runewidth.RuneWidth(r) {
+		case 1:
+			mainc = r
+			width = 1
+		case 2:
+			mainc = r
+			width = 2
+		case 0:
+			compc = append(compc, r)
+		}
+	}
 	return append([]rune{mainc}, compc...), width
 }
 
@@ -625,7 +627,7 @@ func (s *cScreen) SetCell(x, y int, style Style, ch ...rune) {
 	match := true
 	if len(r) != len(cell.ch) || style != cell.style {
 		match = false
-	}  else {
+	} else {
 		for i := range r {
 			if r[i] != cell.ch[i] {
 				match = false
@@ -666,7 +668,7 @@ func (s *cScreen) draw() {
 	}
 	buf := make([]uint16, 0, s.w)
 	wcs := buf[:]
-	style := Style(-1)	// invalid attribute
+	style := Style(-1) // invalid attribute
 
 	x, y := -1, -1
 
@@ -674,7 +676,7 @@ func (s *cScreen) draw() {
 		width := 1
 		for col := 0; col < int(s.w); col += width {
 
-			cell := &s.cells[(row * s.w) + col]
+			cell := &s.cells[(row*s.w)+col]
 			width = int(cell.width)
 			if width < 1 {
 				width = 1
@@ -700,7 +702,7 @@ func (s *cScreen) draw() {
 			}
 			cell.dirty = false
 		}
-		s.writeString(x, y, style, wcs)	
+		s.writeString(x, y, style, wcs)
 		wcs = buf[0:0]
 		style = Style(-1)
 	}

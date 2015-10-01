@@ -53,7 +53,6 @@ type Screen interface {
 	// the default is as defined by the user/system/terminal.
 	SetStyle(style Style)
 
-
 	// ShowCursor is used to display the cursor at a given location.
 	// If the coordinates -1, -1 are given or are otherwise outside the
 	// dimensions of the screen, the cursor will be hidden.
@@ -100,7 +99,6 @@ type Screen interface {
 	// or during a resize event.
 	Sync()
 }
-
 
 func NewScreen() (Screen, error) {
 	// First we attempt to obtain a terminfo screen.  This should work

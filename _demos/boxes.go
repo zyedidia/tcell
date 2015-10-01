@@ -33,13 +33,13 @@ func makebox(s tcell.Screen) {
 
 	lx := rand.Int() % w
 	ly := rand.Int() % h
-	lw := rand.Int() % (w-lx)
-	lh := rand.Int() % (h-ly)
+	lw := rand.Int() % (w - lx)
+	lh := rand.Int() % (h - ly)
 	st := tcell.StyleDefault.Background(tcell.Color(rand.Int() % s.Colors()))
 
 	for row := 0; row < lh; row++ {
 		for col := 0; col < lw; col++ {
-			s.SetCell(lx + col, ly + row, st, ' ')
+			s.SetCell(lx+col, ly+row, st, ' ')
 		}
 	}
 	s.Show()
@@ -85,7 +85,7 @@ loop:
 		select {
 		case <-quit:
 			break loop
-		case <- time.After(time.Millisecond*50):
+		case <-time.After(time.Millisecond * 50):
 		}
 		start := time.Now()
 		makebox(s)
@@ -95,5 +95,5 @@ loop:
 
 	s.Fini()
 	fmt.Printf("Finished %d boxes in %s\n", cnt, dur)
-	fmt.Printf("Average is %0.3f ms / box\n", (float64(dur) / float64(cnt)) / 1000000.0)
+	fmt.Printf("Average is %0.3f ms / box\n", (float64(dur)/float64(cnt))/1000000.0)
 }
