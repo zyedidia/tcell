@@ -21,16 +21,7 @@ import (
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
-
-	"github.com/mattn/go-runewidth"
 )
-
-type cCell struct {
-	ch    []rune
-	width uint8
-	style Style
-	dirty bool
-}
 
 type cScreen struct {
 	in    syscall.Handle
@@ -50,7 +41,7 @@ type cScreen struct {
 	ocursor cursorInfo
 	oimode  uint32
 	oomode  uint32
-	cells   []cCell
+	cells   []Cell
 
 	sync.Mutex
 }
@@ -587,35 +578,7 @@ func mapStyle(style Style) uint16 {
 	return attr
 }
 
-func (s *cScreen) sortRunes(ch ...rune) ([]rune, uint8) {
-	var mainc rune
-	var width uint8
-	var compc []rune
-
-	width = 1
-	mainc = ' '
-	for _, r := range ch {
-		if r < ' ' {
-			// skip over non-printable control characters
-			continue
-		}
-		switch runewidth.RuneWidth(r) {
-		case 1:
-			mainc = r
-			width = 1
-		case 2:
-			mainc = r
-			width = 2
-		case 0:
-			compc = append(compc, r)
-		}
-	}
-	return append([]rune{mainc}, compc...), width
-}
-
 func (s *cScreen) SetCell(x, y int, style Style, ch ...rune) {
-
-	r, width := s.sortRunes(ch...)
 
 	s.Lock()
 	if x < 0 || y < 0 || x >= int(s.w) || y >= int(s.h) {
@@ -624,25 +587,7 @@ func (s *cScreen) SetCell(x, y int, style Style, ch ...rune) {
 	}
 
 	cell := &s.cells[(y*int(s.w))+x]
-	match := true
-	if len(r) != len(cell.ch) || style != cell.style {
-		match = false
-	} else {
-		for i := range r {
-			if r[i] != cell.ch[i] {
-				match = false
-				break
-			}
-		}
-	}
-	if match {
-		s.Unlock()
-		return
-	}
-	cell.style = style
-	cell.ch = r
-	cell.width = width
-	cell.dirty = true
+	cell.SetCell(ch, style)
 	s.Unlock()
 }
 
@@ -677,30 +622,30 @@ func (s *cScreen) draw() {
 		for col := 0; col < int(s.w); col += width {
 
 			cell := &s.cells[(row*s.w)+col]
-			width = int(cell.width)
+			width = int(cell.Width)
 			if width < 1 {
 				width = 1
 			}
 
-			if !cell.dirty || style != cell.style {
+			if !cell.Dirty || style != cell.Style {
 				s.writeString(x, y, style, wcs)
 				wcs = buf[0:0]
 				style = Style(-1)
-				if !cell.dirty {
+				if !cell.Dirty {
 					continue
 				}
 			}
 			if len(wcs) == 0 {
-				style = cell.style
+				style = cell.Style
 				x = col
 				y = row
 			}
-			if len(cell.ch) < 1 {
+			if len(cell.Ch) < 1 {
 				wcs = append(wcs, uint16(' '))
 			} else {
-				wcs = append(wcs, utf16.Encode(cell.ch)...)
+				wcs = append(wcs, utf16.Encode(cell.Ch)...)
 			}
-			cell.dirty = false
+			cell.Dirty = false
 		}
 		s.writeString(x, y, style, wcs)
 		wcs = buf[0:0]
@@ -719,9 +664,7 @@ func (s *cScreen) Show() {
 
 func (s *cScreen) Sync() {
 	s.Lock()
-	for i := range s.cells {
-		s.cells[i].dirty = true
-	}
+	InvalidateCells(s.cells)
 	s.hideCursor()
 	s.resize()
 	s.draw()
@@ -788,14 +731,7 @@ func (s *cScreen) resize() {
 		return
 	}
 
-	newc := make([]cCell, w*h)
-	for row := 0; row < h && row < s.h; row++ {
-		for col := 0; col < w && col < s.w; col++ {
-			newc[(row*w)+col] = s.cells[(row*s.w)+col]
-			newc[(row*w)+col].dirty = true
-		}
-	}
-	s.cells = newc
+	s.cells = ResizeCells(s.cells, s.w, s.h, w, h)
 	s.w = w
 	s.h = h
 
@@ -812,12 +748,7 @@ func (s *cScreen) resize() {
 
 func (s *cScreen) Clear() {
 	s.Lock()
-	for i := range s.cells {
-		s.cells[i].style = s.style
-		s.cells[i].ch = nil
-		s.cells[i].width = 1
-		s.cells[i].dirty = true
-	}
+	ClearCells(s.cells, s.style)
 	s.clear = true
 	s.Unlock()
 }
