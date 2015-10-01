@@ -41,13 +41,15 @@ type cScreen struct {
 	curx  int
 	cury  int
 	style Style
+	clear bool
 
 	w int
 	h int
 
 	oscreen consoleInfo
 	ocursor cursorInfo
-	omode   uint32
+	oimode  uint32
+	oomode  uint32
 	cells	[]cCell
 
 	sync.Mutex
@@ -66,13 +68,12 @@ var (
 	procSetConsoleCursorPosition     = k32.NewProc("SetConsoleCursorPosition")
 	procSetConsoleMode               = k32.NewProc("SetConsoleMode")
 	procGetConsoleMode               = k32.NewProc("GetConsoleMode")
-	procWriteConsoleOutput           = k32.NewProc("WriteConsoleOutputW")
 	procGetConsoleScreenBufferInfo   = k32.NewProc("GetConsoleScreenBufferInfo")
 	procFillConsoleOutputAttribute   = k32.NewProc("FillConsoleOutputAttribute")
 	procFillConsoleOutputCharacter   = k32.NewProc("FillConsoleOutputCharacterW")
 	procSetConsoleWindowInfo         = k32.NewProc("SetConsoleWindowInfo")
 	procSetConsoleScreenBufferSize   = k32.NewProc("SetConsoleScreenBufferSize")
-	procSetConsoleTextAttributes = k32.NewProc("SetConsoleTextAttributes")
+	procSetConsoleTextAttribute = k32.NewProc("SetConsoleTextAttribute")
 )
 
 // We have to bring in the kernel32.dll directly, so we can get access to some
@@ -99,37 +100,45 @@ func (s *cScreen) Init() error {
 		s.out = out
 	}
 
+	s.curx = -1
+	s.cury = -1
 	s.getCursorInfo(&s.ocursor)
 	s.getConsoleInfo(&s.oscreen)
-	s.getMode(&s.omode)
-
-	if err := s.setMode(modeResizeEn); err != nil {
-		syscall.Close(s.in)
-		syscall.Close(s.out)
-		return err
-	}
+	s.getOutMode(&s.oomode)
+	s.getInMode(&s.oimode)
 	s.resize()
-	s.Clear()
-	s.HideCursor()
+
+	s.setInMode(modeResizeEn)
+	s.setOutMode(0)
+	s.clearScreen(s.style)
+	s.hideCursor()
 	go s.scanInput()
 
 	return nil
 }
 
 func (s *cScreen) EnableMouse() {
-	s.setMode(modeResizeEn | modeMouseEn)
+	s.setInMode(modeResizeEn | modeMouseEn)
 }
 
 func (s *cScreen) DisableMouse() {
-	s.setMode(modeResizeEn)
+	s.setInMode(modeResizeEn)
 }
 
 func (s *cScreen) Fini() {
-	s.setCursorPos(0, 0)
+	s.style = StyleDefault
+	s.curx = -1
+	s.cury = -1
+
 	s.setCursorInfo(&s.ocursor)
-	s.setMode(s.omode)
+	s.setInMode(s.oimode)
+	s.setOutMode(s.oomode)
 	s.setBufferSize(int(s.oscreen.size.x), int(s.oscreen.size.y))
-	s.Clear()
+	s.clearScreen(StyleDefault)
+	s.setCursorPos(0, 0)
+	procSetConsoleTextAttribute.Call(
+		uintptr(s.out),
+		uintptr(mapStyle(StyleDefault)))
 
 	close(s.quit)
 	syscall.Close(s.in)
@@ -193,6 +202,7 @@ func (s*cScreen) doCursor() {
 	x, y := s.curx, s.cury
 
 	if x < 0 || y < 0 || x >= s.w || y >= s.h {
+		s.setCursorPos(0, 0)
 		s.hideCursor()
 	} else {
 		s.setCursorPos(x, y)
@@ -632,52 +642,15 @@ func (s *cScreen) SetCell(x, y int, style Style, ch ...rune) {
 	cell.width = width
 	cell.dirty = true
 	s.Unlock()
-
-	return
-
-	/*
-	r := ' '
-	w := 0
-	for i := range ch {
-		if w = runewidth.RuneWidth(ch[i]); w != 0 {
-			r = ch[i]
-			break
-		}
-	}
-
-	index := (y * s.w) + x
-	attr := mapStyle(style)
-
-	// don't bother recording a dirty flag, we're going to send the entire
-	// screen anyway.
-	s.Lock()
-	if r != s.cells[index].ch || attr != s.cells[index].attr {
-		s.cells[index].ch = r
-		s.cells[index].attr = attr
-	}
-	s.dirty = 1
-	s.Unlock()
-	*/
-
-	/*
-	rec := rect{left: int16(x), right: int16(x), top: int16(y), bottom: int16(y)}
-	pos := coord{x: int16(0), y: int16(0)}
-	siz := coord{x: 1, y: 1}
-	dat := charInfo{ch: uint16(r), attr: mapStyle(style)}
-
-	procWriteConsoleOutput.Call(
-		uintptr(s.out),
-		uintptr(unsafe.Pointer(&dat)),
-		siz.uintptr(),
-		pos.uintptr(),
-		uintptr(unsafe.Pointer(&rec)))
-	*/
 }
 
 func (s *cScreen) writeString(x, y int, style Style, ch []uint16) {
 	// we assume the caller has hidden the cursor
+	if len(ch) == 0 {
+		return
+	}
 	nw := uint32(len(ch))
-	procSetConsoleTextAttributes.Call(
+	procSetConsoleTextAttribute.Call(
 		uintptr(s.out),
 		uintptr(mapStyle(style)))
 	s.setCursorPos(x, y)
@@ -687,18 +660,25 @@ func (s *cScreen) writeString(x, y int, style Style, ch []uint16) {
 func (s *cScreen) draw() {
 	// allocate a scratch line bit enough for no combining chars.
 	// if you have combining characters, you may pay for extra allocs.
+	if s.clear {
+		s.clearScreen(s.style)
+		s.clear = false
+	}
 	buf := make([]uint16, 0, s.w)
 	wcs := buf[:]
 	style := Style(-1)	// invalid attribute
-	
+
 	x, y := -1, -1
 
 	for row := 0; row < int(s.h); row++ {
 		width := 1
 		for col := 0; col < int(s.w); col += width {
 
-			cell := &s.cells[(row * s.w) + s.h]
+			cell := &s.cells[(row * s.w) + col]
 			width = int(cell.width)
+			if width < 1 {
+				width = 1
+			}
 
 			if !cell.dirty || style != cell.style {
 				s.writeString(x, y, style, wcs)
@@ -713,20 +693,17 @@ func (s *cScreen) draw() {
 				x = col
 				y = row
 			}
-			wcs = append(wcs, utf16.Encode(cell.ch)...)
+			if len(cell.ch) < 1 {
+				wcs = append(wcs, uint16(' '))
+			} else {
+				wcs = append(wcs, utf16.Encode(cell.ch)...)
+			}
+			cell.dirty = false
 		}
 		s.writeString(x, y, style, wcs)	
+		wcs = buf[0:0]
+		style = Style(-1)
 	}
-/*
-	area := rect{left: 0, top: 0, right: s.w-1, bottom: s.h-1}
-	procWriteConsoleOutput.Call(
-		uintptr(s.out),
-		uinptr(unsafe.Pointer(&s.cells)),
-		coord{s.w, s.h}.uintptr(),
-		coord{0, 0}.uintptr(),
-		uintptr(unsafe.Pointer(&area)))
-		
-*/
 }
 
 func (s *cScreen) Show() {
@@ -832,10 +809,21 @@ func (s *cScreen) resize() {
 }
 
 func (s *cScreen) Clear() {
+	s.Lock()
+	for i := range s.cells {
+		s.cells[i].style = s.style
+		s.cells[i].ch = nil
+		s.cells[i].width = 1
+		s.cells[i].dirty = true
+	}
+	s.clear = true
+	s.Unlock()
+}
 
+func (s *cScreen) clearScreen(style Style) {
 	pos := coord{0, 0}
-	attr := uint16(0x7) // default white fg, black bg)
-	x, y := s.Size()
+	attr := mapStyle(style)
+	x, y := s.w, s.h
 	scratch := uint32(0)
 	count := uint32(x * y)
 
@@ -856,9 +844,11 @@ func (s *cScreen) Clear() {
 const (
 	modeMouseEn  uint32 = 0x0010
 	modeResizeEn uint32 = 0x0008
+	modeWrapEOL  uint32 = 0x0002
+	modeCooked   uint32 = 0x0001
 )
 
-func (s *cScreen) setMode(mode uint32) error {
+func (s *cScreen) setInMode(mode uint32) error {
 	rv, _, err := procSetConsoleMode.Call(
 		uintptr(s.in),
 		uintptr(mode))
@@ -868,9 +858,25 @@ func (s *cScreen) setMode(mode uint32) error {
 	return nil
 }
 
-func (s *cScreen) getMode(v *uint32) {
+func (s *cScreen) setOutMode(mode uint32) error {
+	rv, _, err := procSetConsoleMode.Call(
+		uintptr(s.out),
+		uintptr(mode))
+	if rv == 0 {
+		return err
+	}
+	return nil
+}
+
+func (s *cScreen) getInMode(v *uint32) {
 	procGetConsoleMode.Call(
 		uintptr(s.in),
+		uintptr(unsafe.Pointer(v)))
+}
+
+func (s *cScreen) getOutMode(v *uint32) {
+	procGetConsoleMode.Call(
+		uintptr(s.out),
 		uintptr(unsafe.Pointer(v)))
 }
 
