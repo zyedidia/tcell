@@ -141,7 +141,11 @@ func getinfo(name string) (*tcell.Terminfo, error) {
 	// manual, and all terminals that have kmous are expected to
 	// use these same codes.
 	if t.Mouse != "" {
-		t.EnterMouse = "\x1b[?1000h"
+		// we anticipate that all xterm mouse tracking compatible
+		// terminals understand mouse tracking (1000), but we hope
+		// that those that don't understand any-event tracking (1003)
+		// will at least ignore it.
+		t.EnterMouse = "\x1b[?1000h\x1b[?1003h"
 		t.ExitMouse = "\x1b[?1000l"
 	}
 	// We only support colors in ANSI 8 or 256 color mode.

@@ -25,13 +25,14 @@ import (
 	"github.com/gdamore/tcell"
 )
 
-func emitStr(s tcell.Screen, x, y int, str string) {
+var defStyle tcell.Style
+
+func emitStr(s tcell.Screen, x, y int, style tcell.Style, str string) {
 	for _, c := range str {
-		s.SetCell(x, y, tcell.StyleDefault, c)
+		s.SetCell(x, y, style, c)
 		x++
 	}
 }
-
 
 func drawBox(s tcell.Screen, x1, y1, x2, y2 int, style tcell.Style, r rune) {
 	if y2 < y1 {
@@ -56,19 +57,14 @@ func drawSelect(s tcell.Screen, x1, y1, x2, y2 int, sel bool) {
 	if x2 < x1 {
 		x1, x2 = x2, x1
 	}
-	for row := y1; row < y2; row++ {
-		for col := x1; col < x2; col++ {
+	for row := y1; row <= y2; row++ {
+		for col := x1; col <= x2; col++ {
 			if cp := s.GetCell(col, row); cp != nil {
 				st := cp.Style
-
-				_, bg, _ := st.Decompose()
-
-				if sel {
-					bg += tcell.Color(2)
-				} else {
-					bg -= tcell.Color(2)
+				if st == tcell.StyleDefault {
+					st = defStyle
 				}
-				st = st.Background(bg)
+				st = st.Reverse(sel)
 				cp.Style = st
 				s.PutCell(col, row, cp)
 			}
@@ -84,25 +80,31 @@ func main() {
 		fmt.Printf("oops: %v", e)
 	}
 	s.Init()
+	defStyle = tcell.StyleDefault.
+		Background(tcell.ColorBlack).
+		Foreground(tcell.ColorWhite)
+	s.SetStyle(defStyle)
 	s.EnableMouse()
 	s.Clear()
 
 	posfmt := "Mouse: %d, %d  "
 	btnfmt := "Buttons: %-20s"
-
+	white := tcell.StyleDefault.
+		Foreground(tcell.ColorBrightWhite).Background(tcell.ColorRed)
 
 	mx, my := -1, -1
-	ox, oy := 0, 0
+	ox, oy := -1, -1 
 	bx, by := -1, -1
 	w, h := s.Size()
-	lbutton := tcell.ButtonNone
 	lchar := '*'
 	bstr := ""
 
 	for {
-		emitStr(s, 1, 1, "Press ESC to exit, C to clear.")
-		emitStr(s, 1, 2, fmt.Sprintf(posfmt, mx, my))
-		emitStr(s, 1, 3, fmt.Sprintf(btnfmt, bstr))
+		drawBox(s, 1, 1, 31, 3, white, ' ')
+		emitStr(s, 1, 1, white, "Press ESC to exit, C to clear.")
+		emitStr(s, 1, 2, white, fmt.Sprintf(posfmt, mx, my))
+		emitStr(s, 1, 3, white, fmt.Sprintf(btnfmt, bstr))
+
 		s.Show()
 		bstr = ""
 		ev := s.PollEvent()
@@ -111,6 +113,12 @@ func main() {
 			Background(tcell.ColorBrightBlue).
 			Foreground(tcell.ColorBrightGreen)
 		w, h = s.Size()
+
+		// always clear any old selection box
+		if ox >= 0 && oy >= 0 && bx >= 0 {
+			drawSelect(s, ox, oy, bx, by, false)
+		}
+
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
 			s.Sync()
@@ -147,12 +155,13 @@ func main() {
 			// Only buttons, not wheel events
 			button &= tcell.ButtonMask(0xff)
 			ch := '*'
-			if ox >= 0 && bx >= 0 && oy >= 0 && by >= 0 {
-				drawSelect(s, ox, oy, bx, by, false)
+
+			if button != tcell.ButtonNone && ox < 0 {
+				ox, oy = x, y
 			}
 			switch ev.Buttons() {
 			case tcell.ButtonNone:
-				if lbutton != tcell.ButtonNone {
+				if ox >= 0 {
 					bg := tcell.Color((lchar - '0')*2+1)
 					drawBox(s, ox, oy, x, y,
 						up.Background(bg),
@@ -180,22 +189,18 @@ func main() {
 				ch = '*'
 
 			}
-			//s.SetCell(x, y, st, ch)
-			if lbutton == tcell.ButtonNone {
-				ox, oy = x, y
-			}
-			if ox >= 0 && oy >= 0 {
+			if button != tcell.ButtonNone {
 				bx, by = x, y
 			}
-			if ox >= 0 && oy >= 0 {
-				drawSelect(s, ox, oy, bx, by, true)
-			}
-			lbutton = button
 			lchar = ch
 			s.SetCell(w-1, h-1, st, 'M')
 			mx, my = x, y
 		default:
 			s.SetCell(w-1, h-1, st, 'X')
+		}
+
+		if ox >= 0 && bx >= 0 {
+			drawSelect(s, ox, oy, bx, by, true)
 		}
 	}
 }
