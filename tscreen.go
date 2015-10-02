@@ -191,6 +191,29 @@ func (t *tScreen) SetCell(x, y int, style Style, ch ...rune) {
 	t.Unlock()
 }
 
+func (t *tScreen) PutCell(x, y int, cell *Cell) {
+	t.Lock()
+	if x < 0 || y < 0 || x >= t.w || y >= t.h {
+		t.Unlock()
+		return
+	}
+	cp := &t.cells[(y*t.w)+x]
+	cp.PutStyle(cell.Style)
+	cp.PutChars(cell.Ch)
+	t.Unlock()
+}
+
+func (t *tScreen) GetCell(x, y int) *Cell {
+	t.Lock()
+	if x < 0 || y < 0 || x >= t.w || y >= t.h {
+		t.Unlock()
+		return nil
+	}
+	cell := t.cells[(y*t.w)+x]
+	t.Unlock()
+	return &cell
+}
+
 func (t *tScreen) drawCell(x, y int, cell *Cell) {
 	// XXX: this would be a place to check for hazeltine not being able
 	// to display ~, or possibly non-UTF-8 locales, etc.

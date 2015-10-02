@@ -77,6 +77,9 @@ func ResizeCells(oldc []Cell, oldw, oldh, neww, newh int) []Cell {
 // the Dirty bit if the contents are different than they were.
 func (c *Cell) SetCell(ch []rune, style Style) {
 
+	c.PutChars(ch)
+	c.PutStyle(style)
+/*
 	var mainc rune
 	var width uint8
 	var compc []rune
@@ -113,4 +116,55 @@ func (c *Cell) SetCell(ch []rune, style Style) {
 	c.Ch = newch
 	c.Style = style
 	c.Width = width
+*/
+}
+
+func (c *Cell) PutChars(ch []rune) {
+
+	var mainc rune
+	var width uint8
+	var compc []rune
+
+	width = 1
+	mainc = ' '
+	for _, r := range ch {
+		if r < ' ' {
+			// skip over non-printable control characters
+			continue
+		}
+		switch runewidth.RuneWidth(r) {
+		case 1:
+			mainc = r
+			width = 1
+		case 2:
+			mainc = r
+			width = 2
+		case 0:
+			compc = append(compc, r)
+		}
+	}
+
+	newch := append([]rune{mainc}, compc...)
+	if len(newch) != len(c.Ch) {
+		c.Dirty = true
+	} else {
+		for i := range newch {
+			if newch[i] != c.Ch[i] {
+				c.Dirty = true
+			}
+		}
+	}
+	c.Ch = newch
+	c.Width = width
+}
+
+func (c *Cell) PutChar(ch rune) {
+	c.PutChars([]rune{ch})
+}
+
+func (c *Cell) PutStyle(style Style) {
+	if c.Style != style {
+		c.Style = style
+		c.Dirty = true
+	}
 }

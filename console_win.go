@@ -231,6 +231,12 @@ type mouseRecord struct {
 	mod   uint32
 	flags uint32
 }
+const (
+	mouseDoubleClick uint32 = 0x2
+	mouseHWheeled uint32 = 0x8
+	mouseVWheeled uint32 = 0x4
+	mouseMoved uint32 = 0x1
+)
 
 type resizeRecord struct {
 	x int16
@@ -459,13 +465,6 @@ func (s *cScreen) getConsoleInput() error {
 		mrec.flags = getu32(rec.data[12:]) // not using yet
 		btns := ButtonNone
 
-		if mrec.btns == s.mbtns {
-			// If the buttons have not changed,
-			// then don't report the event.  We aren't
-			// reporting motion events at this time.
-			return nil
-		}
-
 		s.mbtns = mrec.btns
 		if mrec.btns&0x1 != 0 {
 			btns |= Button1
@@ -483,6 +482,21 @@ func (s *cScreen) getConsoleInput() error {
 			btns |= Button5
 		}
 
+		if mrec.flags & mouseVWheeled != 0 {
+			if mrec.btns & 0x80000000 == 0 {
+				btns |= WheelUp
+			} else {
+				btns |= WheelDown
+			}
+		}
+		if mrec.flags & mouseHWheeled != 0 {
+			if mrec.btns & 0x80000000 == 0 {
+				btns |= WheelRight
+			} else {
+				btns |= WheelLeft
+			}
+		}
+		// we ignore double click, events are delivered normally
 		s.PostEvent(NewEventMouse(int(mrec.x), int(mrec.y), btns,
 			mod2mask(mrec.mod)))
 
@@ -589,6 +603,29 @@ func (s *cScreen) SetCell(x, y int, style Style, ch ...rune) {
 	cell := &s.cells[(y*int(s.w))+x]
 	cell.SetCell(ch, style)
 	s.Unlock()
+}
+
+func (s *cScreen) PutCell(x, y int, cell *Cell) {
+	s.Lock()
+	if x < 0 || y < 0 || x >= int(s.w) || y >= int(s.h) {
+		s.Unlock()
+		return
+	}
+	cptr := &s.cells[(y*int(s.w))+x]
+	cptr.PutChars(cell.Ch)
+	cptr.PutStyle(cell.Style)
+	s.Unlock()
+}
+
+func (s *cScreen) GetCell(x, y int) *Cell {
+	s.Lock()
+	if x < 0 || y < 0 || x >= int(s.w) || y >= int(s.h) {
+		s.Unlock()
+		return nil
+	}
+	cell := s.cells[(y*int(s.w))+x]
+	s.Unlock()
+	return &cell
 }
 
 func (s *cScreen) writeString(x, y int, style Style, ch []uint16) {
