@@ -60,6 +60,11 @@ type Screen interface {
 	// modifications made will not change the display.
 	GetCell(x, y int) *Cell
 
+	// SetStyle sets the default style to use when clearing the screen
+	// or when StyleDefault is specified.  If it is also STyleDefault,
+	// then whatever system/terminal default is relevant will be used.
+	SetStyle(style Style)
+
 	// ShowCursor is used to display the cursor at a given location.
 	// If the coordinates -1, -1 are given or are otherwise outside the
 	// dimensions of the screen, the cursor will be hidden.
