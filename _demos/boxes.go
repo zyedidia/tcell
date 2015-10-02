@@ -31,15 +31,24 @@ func makebox(s tcell.Screen) {
 		return
 	}
 
+	glyphs := []rune { '@', '#', '&', '*', '=', '%', 'Z', 'A' }
+
 	lx := rand.Int() % w
 	ly := rand.Int() % h
 	lw := rand.Int() % (w - lx)
 	lh := rand.Int() % (h - ly)
-	st := tcell.StyleDefault.Background(tcell.Color(rand.Int() % s.Colors()))
+	st := tcell.StyleDefault
+	gl := ' '
+	if s.Colors() > 1 {
+		st = st.Background(tcell.Color(rand.Int() % s.Colors()))
+	} else {
+		st = st.Reverse(rand.Int() % 2 == 0)
+		gl = glyphs[rand.Int() % len(glyphs)]
+	}
 
 	for row := 0; row < lh; row++ {
 		for col := 0; col < lw; col++ {
-			s.SetCell(lx+col, ly+row, st, ' ')
+			s.SetCell(lx+col, ly+row, st, gl)
 		}
 	}
 	s.Show()
@@ -66,7 +75,7 @@ func main() {
 			switch ev := ev.(type) {
 			case *tcell.EventKey:
 				switch ev.Key() {
-				case tcell.KeyEscape:
+				case tcell.KeyEscape, tcell.KeyEnter:
 					close(quit)
 					return
 				case tcell.KeyCtrlL:

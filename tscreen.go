@@ -71,6 +71,7 @@ type tScreen struct {
 	cursorx  int
 	cursory  int
 	tiosp    *termiosPrivate
+	baud	 int
 
 	sync.Mutex
 }
@@ -82,13 +83,12 @@ func (t *tScreen) Init() error {
 		return e
 	}
 
-	out := t.out
 	ti := t.ti
 
-	io.WriteString(out, ti.EnterCA)
-	io.WriteString(out, ti.EnterKeypad)
-	io.WriteString(out, ti.HideCursor)
-	io.WriteString(out, ti.Clear)
+	t.TPuts(ti.EnterCA)
+	t.TPuts(ti.EnterKeypad)
+	t.TPuts(ti.HideCursor)
+	t.TPuts(ti.Clear)
 
 	t.quit = make(chan struct{})
 	t.cx = -1
@@ -147,16 +147,15 @@ func (t *tScreen) prepareKeys() {
 
 func (t *tScreen) Fini() {
 	ti := t.ti
-	out := t.out
 	if t.quit != nil {
 		close(t.quit)
 	}
-	io.WriteString(out, ti.ShowCursor)
-	io.WriteString(out, ti.AttrOff)
-	io.WriteString(out, ti.Clear)
-	io.WriteString(out, ti.ExitCA)
-	io.WriteString(out, ti.ExitKeypad)
-	io.WriteString(out, ti.ExitMouse)
+	t.TPuts(ti.ShowCursor)
+	t.TPuts(ti.AttrOff)
+	t.TPuts(ti.Clear)
+	t.TPuts(ti.ExitCA)
+	t.TPuts(ti.ExitKeypad)
+	t.TPuts(ti.ExitMouse)
 
 	t.w = 0
 	t.h = 0
@@ -198,7 +197,7 @@ func (t *tScreen) drawCell(x, y int, cell *Cell) {
 	ti := t.ti
 
 	if t.cy != y || t.cx != x {
-		io.WriteString(t.out, ti.TGoto(x, y))
+		t.TPuts(ti.TGoto(x, y))
 	}
 	style := cell.Style
 	if style == StyleDefault {
@@ -207,29 +206,29 @@ func (t *tScreen) drawCell(x, y int, cell *Cell) {
 	if style != t.curstyle {
 		fg, bg, attrs := style.Decompose()
 
-		io.WriteString(t.out, ti.AttrOff)
+		t.TPuts(ti.AttrOff)
 		if attrs&AttrBold != 0 {
-			io.WriteString(t.out, ti.Bold)
+			t.TPuts(ti.Bold)
 		}
 		if attrs&AttrUnderline != 0 {
-			io.WriteString(t.out, ti.Underline)
+			t.TPuts(ti.Underline)
 		}
 		if attrs&AttrReverse != 0 {
-			io.WriteString(t.out, ti.Reverse)
+			t.TPuts(ti.Reverse)
 		}
 		if attrs&AttrBlink != 0 {
-			io.WriteString(t.out, ti.Blink)
+			t.TPuts(ti.Blink)
 		}
 		if attrs&AttrDim != 0 {
-			io.WriteString(t.out, ti.Dim)
+			t.TPuts(ti.Dim)
 		}
 		if fg != ColorDefault {
 			c := int(fg) - 1
-			io.WriteString(t.out, ti.TParm(ti.SetFg, c))
+			t.TPuts(ti.TParm(ti.SetFg, c))
 		}
 		if bg != ColorDefault {
 			c := int(bg) - 1
-			io.WriteString(t.out, ti.TParm(ti.SetBg, c))
+			t.TPuts(ti.TParm(ti.SetBg, c))
 		}
 		t.curstyle = style
 	}
@@ -269,15 +268,19 @@ func (t *tScreen) showCursor() {
 
 	x, y := t.cursorx, t.cursory
 	if x < 0 || y < 0 || x >= t.w || y >= t.h {
-		io.WriteString(t.out, t.ti.HideCursor)
+		t.TPuts(t.ti.HideCursor)
 		return
 	}
 	if t.cx != x || t.cy != y {
-		io.WriteString(t.out, t.ti.TGoto(x, y))
+		t.TPuts(t.ti.TGoto(x, y))
 	}
-	io.WriteString(t.out, t.ti.ShowCursor)
+	t.TPuts(t.ti.ShowCursor)
 	t.cx = x
 	t.cy = y
+}
+
+func (t *tScreen) TPuts(s string) {
+	t.ti.TPuts(t.out, s, t.baud)
 }
 
 func (t *tScreen) Show() {
@@ -288,13 +291,13 @@ func (t *tScreen) Show() {
 }
 
 func (t *tScreen) clearScreen() {
-	io.WriteString(t.out, t.ti.Clear)
+	t.TPuts(t.ti.Clear)
 	t.clear = false
 }
 
 func (t *tScreen) hideCursor() {
 	// does not update cursor position
-	io.WriteString(t.out, t.ti.HideCursor)
+	t.TPuts(t.ti.HideCursor)
 }
 
 func (t *tScreen) draw() {
@@ -326,13 +329,13 @@ func (t *tScreen) draw() {
 
 func (t *tScreen) EnableMouse() {
 	if len(t.mouse) != 0 {
-		io.WriteString(t.out, t.ti.EnterMouse)
+		t.TPuts(t.ti.EnterMouse)
 	}
 }
 
 func (t *tScreen) DisableMouse() {
 	if len(t.mouse) != 0 {
-		io.WriteString(t.out, t.ti.ExitMouse)
+		t.TPuts(t.ti.ExitMouse)
 	}
 }
 

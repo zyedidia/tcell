@@ -38,6 +38,84 @@ import (
 //	return (-1);
 // #endif
 // }
+//
+// int getbaud(struct termios *tios) {
+//     switch (cfgetospeed(tios)) {
+// #ifdef B0
+//     case B0: return (0);
+// #endif
+// #ifdef B50
+//     case B50: return (50);
+// #endif
+// #ifdef B75
+//     case B75: return (75);
+// #endif
+// #ifdef B110
+//	case B110: return (110);
+// #endif
+// #ifdef B134
+//	case B134: return (134);
+// #endif
+// #ifdef B150
+//	case B150: return (150);
+// #endif
+// #ifdef B200
+//	case B200: return (200);
+// #endif
+// #ifdef B300
+//	case B300: return (300);
+// #endif
+// #ifdef B600
+//	case B600: return (600);
+// #endif
+// #ifdef B1200
+//	case B1200: return (1200);
+// #endif
+// #ifdef B1800
+//	case B1800: return (1800);
+// #endif
+// #ifdef B2400
+//	case B2400: return (2400);
+// #endif
+// #ifdef B4800
+//	case B4800: return (4800);
+// #endif
+// #ifdef B9600
+//	case B9600: return (9600);
+// #endif
+// #ifdef B19200
+//	case B19200: return (19200);
+// #endif
+// #ifdef B38400
+//	case B38400: return (38400);
+// #endif
+// #ifdef B57600
+//	case B57600: return (57600);
+// #endif
+// #ifdef B76800
+//	case B76800: return (76800);
+// #endif
+// #ifdef B115200
+//	case B115200: return (115200);
+// #endif
+// #ifdef B153600
+//	case B153600: return (153600);
+// #endif
+// #ifdef B230400
+//	case B230400: return (230400);
+// #endif
+// #ifdef B307200
+//	case B307200: return (307200);
+// #endif
+// #ifdef B460800
+//	case B460800: return (460800);
+// #endif
+// #ifdef B921600
+//	case B921600: return (921600);
+// #endif
+//	}
+//	return (0);
+// }
 import "C"
 
 type termiosPrivate struct {
@@ -63,6 +141,7 @@ func (t *tScreen) termioInit() error {
 	if rv, e = C.tcgetattr(fd, &t.tiosp.tios); rv != 0 {
 		goto failed
 	}
+	t.baud = int(C.getbaud(&t.tiosp.tios))
 	newtios = t.tiosp.tios
 	newtios.c_iflag &^= C.IGNBRK | C.BRKINT | C.PARMRK |
 		C.ISTRIP | C.INLCR | C.IGNCR |

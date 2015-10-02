@@ -53,6 +53,11 @@ func tigetnum(s string) int {
 	return int(n)
 }
 
+func tigetflag(s string) bool {
+	n := C.tigetflag(C.CString(s))
+	return n != 0
+}
+
 func tigetstr(s string) string {
 	// NB: If the string is invalid, we'll get back -1, which causes
 	// no end of grief.  So make sure your capability strings are correct!
@@ -151,6 +156,16 @@ func getinfo(name string) (*tcell.Terminfo, error) {
 	if t.SetCursor == "" {
 		return nil, errors.New("terminal not cursor addressable")
 	}
+
+	// For padding, we lookup the pad char.  If that isn't present,
+	// and npc is *not* set, then we assume a null byte.
+	t.PadChar = tigetstr("pad")
+	if t.PadChar == "" {
+		if !tigetflag("npc") {
+			t.PadChar = "\u0000"
+		}
+	}
+
 	return t, nil
 }
 
@@ -223,6 +238,7 @@ func dotGoInfo(w io.Writer, t *tcell.Terminfo) {
 	dotGoAddStr(w, "ExitKeypad", t.ExitKeypad)
 	dotGoAddStr(w, "SetFg", t.SetFg)
 	dotGoAddStr(w, "SetBg", t.SetBg)
+	dotGoAddStr(w, "PadChar", t.PadChar)
 	dotGoAddStr(w, "Mouse", t.Mouse)
 	dotGoAddStr(w, "EnterMouse", t.EnterMouse)
 	dotGoAddStr(w, "ExitMouse", t.ExitMouse)
