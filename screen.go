@@ -44,13 +44,25 @@ type Screen interface {
 	// is not affected, so callers probably should hide the cursor when
 	// calling this.
 	//
-	// Note that the results will not be visible until either Show() or Sync()
-	// are called.
+	// Note that the results will not be visible until either Show() or
+	// Sync() are called.
 	SetCell(x int, y int, style Style, ch ...rune)
 
-	// SetStyle sets the default style, used when SetCell is called with
-	// StyleDefault, or when Clear is called.  If set to StyleDefault, then
-	// the default is as defined by the user/system/terminal.
+	// PutCell stores the contents of the given cell at the given location.
+	// The Dirty flag on the stored cell is set to true if the contents
+	// do not match.
+	PutCell(x, y int, cell *Cell)
+
+	// GetCell returns the contents of the given cell.  If the coordinates
+	// are out of range, then nil will be returned for the rune array.
+	// This will also be the case if no content has been written to that
+	// location.  Note that the returned Cell object is a copy, and
+	// modifications made will not change the display.
+	GetCell(x, y int) *Cell
+
+	// SetStyle sets the default style to use when clearing the screen
+	// or when StyleDefault is specified.  If it is also STyleDefault,
+	// then whatever system/terminal default is relevant will be used.
 	SetStyle(style Style)
 
 	// ShowCursor is used to display the cursor at a given location.

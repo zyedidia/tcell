@@ -72,6 +72,7 @@ type tScreen struct {
 	cursory  int
 	tiosp    *termiosPrivate
 	baud	 int
+	wasbtn	 bool
 
 	sync.Mutex
 }
@@ -188,6 +189,29 @@ func (t *tScreen) SetCell(x, y int, style Style, ch ...rune) {
 	cell := &t.cells[(y*t.w)+x]
 	cell.SetCell(ch, style)
 	t.Unlock()
+}
+
+func (t *tScreen) PutCell(x, y int, cell *Cell) {
+	t.Lock()
+	if x < 0 || y < 0 || x >= t.w || y >= t.h {
+		t.Unlock()
+		return
+	}
+	cp := &t.cells[(y*t.w)+x]
+	cp.PutStyle(cell.Style)
+	cp.PutChars(cell.Ch)
+	t.Unlock()
+}
+
+func (t *tScreen) GetCell(x, y int) *Cell {
+	t.Lock()
+	if x < 0 || y < 0 || x >= t.w || y >= t.h {
+		t.Unlock()
+		return nil
+	}
+	cell := t.cells[(y*t.w)+x]
+	t.Unlock()
+	return &cell
 }
 
 func (t *tScreen) drawCell(x, y int, cell *Cell) {
@@ -441,13 +465,29 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 				mod := ModNone
 				switch b[0] & 3 {
 				case 0:
-					btns = Button1
+					// Sometimes mouse button presses get
+					// conflated with wheel events.  So
+					// only count as a wheel event if it
+					// occurs in isolation.
+					if b[0] & 64 != 0 && !t.wasbtn {
+						btns = WheelUp
+					} else {
+						btns = Button1
+						t.wasbtn = true
+					}
 				case 1:
-					btns = Button2
+					if b[0] & 64 != 0 && !t.wasbtn {
+						btns = WheelDown
+					} else {
+						btns = Button2
+						t.wasbtn = true
+					}
 				case 2:
 					btns = Button3
+					t.wasbtn = true
 				case 3:
 					btns = 0
+					t.wasbtn = false
 				}
 				if b[0]&4 != 0 {
 					mod |= ModShift
@@ -464,6 +504,22 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 					buf.ReadByte()
 				}
 				matched = true
+				// We've seen cases where the x or y coordinates
+				// are off screen, normally when click dragging.
+				// Clip them to the window.
+
+				if x > t.w-1 {
+					x = t.w-1
+				}
+				if y > t.h-1 {
+					y = t.h-1
+				}
+				if x < 0 {
+					x = 0
+				}
+				if y < 0 {
+					y = 0
+				}
 				ev := NewEventMouse(x, y, btns, mod)
 				t.PostEvent(ev)
 				continue
