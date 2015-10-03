@@ -406,6 +406,282 @@ func (t *tScreen) PostEvent(ev Event) {
 	t.evch <- ev
 }
 
+
+func (t *tScreen) postMouseEvent(x, y, btn int) {
+
+	// XTerm mouse events only report at most one button at a time,
+	// which may include a wheel button.  Wheel motion events are
+	// reported as single impulses, while other button events are reported
+	// as separate press & release events.
+
+	button := ButtonNone
+	mod := ModNone
+
+	// Mouse wheel has bit 6 set, no release events.  It should be noted
+	// that wheel events are sometimes misdelivered as mouse button events
+	// during a click-drag, so we debounce these, considering them to be
+	// button press events unless we see an intervening release event.
+	switch btn & 0x43 {
+	case 0:
+		button = Button1
+		t.wasbtn = true
+	case 1:
+		button = Button2
+		t.wasbtn = true
+	case 2:
+		button = Button3
+		t.wasbtn = true
+	case 3:
+		button = ButtonNone
+		t.wasbtn = false
+	case 0x40:
+		if !t.wasbtn {
+			button = WheelUp
+		} else {
+			button = Button1
+		}
+	case 0x41:
+		if !t.wasbtn {
+			button = WheelDown
+		} else {
+			button = Button2
+		}
+	}
+
+	if btn & 0x4 != 0 {
+		mod |= ModShift
+	}
+	if btn & 0x8 != 0 {
+		mod |= ModMeta
+	}
+	if btn & 0x10 != 0 {
+		mod |= ModCtrl
+	}
+
+	// Some terminals will report mouse coordinates outside the
+	// screen, especially with click-drag events.  Clip the coordinates
+	// to the screen in that case.
+	if x < 0 {
+		x = 0
+	}
+	if x > t.w-1 {
+		x = t.w-1
+	}
+	if y < 0 {
+		y = 0
+	}
+	if y > t.h-1 {
+		y = t.h-1
+	}
+	ev := NewEventMouse(x, y, button, mod)
+	t.PostEvent(ev)
+}
+
+// parseSgrMouse attempts to locate an SGR mouse record at the start of the
+// buffer.  It returns true, true if it found one, and the associated bytes
+// be removed from the buffer.  It returns true, false if the buffer might
+// contain such an event, but more bytes are necessary (partial match), and
+// false, false if the content is definitely *not* an SGR mouse record.
+func (t *tScreen) parseSgrMouse(buf *bytes.Buffer) (bool, bool) {
+
+	b := buf.Bytes()
+
+	var x, y, btn, state int
+	dig := false
+	neg := false
+	i := 0
+	val := 0
+
+	for i = range b {
+		switch b[i] {
+		case '\x1b':
+			if state != 0 {
+				return false, false
+			}
+			state = 1
+
+		case '\x9b':
+			if state != 0 {
+				return false, false
+			}
+			state = 2
+
+		case '[':
+			if state != 1 {
+				return false, false
+			}
+			state = 2
+
+		case '<':
+			if state != 2 {
+				return false, false
+			}
+			val = 0
+			dig = false
+			neg = false
+			state = 3
+
+		case '-':
+			if state != 3 || state != 4 || state != 5 {
+				return false, false
+			}
+			if dig || neg {
+				return false, false
+			}
+			neg = true	// stay in state
+
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+			if state != 3 && state != 4 && state != 5 {
+				return false, false
+			}
+			val *= 10
+			val += int(b[i]-'0')
+			dig = true	// stay in state
+
+		case ';':
+			if neg {
+				val = -val
+			}
+			switch state {
+			case 3:
+				btn, val = val, 0
+				neg, dig, state = false, false, 4
+			case 4:
+				x, val = val, 0
+				neg, dig, state = false, false, 5
+			default:
+				return false, false
+			}
+
+		case 'm', 'M':
+			if state != 5 {
+				return false, false
+			}
+			if neg {
+				val = -val
+			}
+			y = val
+
+			// We don't care about the motion bit
+			btn &^= 32
+			if b[i] == 'm' {
+				// mouse release, clear all buttons
+				btn |= 3
+				btn &^= 0x40
+			}
+			// consume the event bytes
+			for i >= 0 {
+				buf.ReadByte()
+				i--
+			}
+			t.postMouseEvent(x, y, btn)
+			return true, true
+		}
+	}
+
+	// incomplete & inconclusve at this point
+	return true, false
+}
+
+// parseXtermMouse is like parseSgrMouse, but it parses a legacy
+// X11 mouse record.
+func (t *tScreen) parseXtermMouse(buf *bytes.Buffer) (bool, bool) {
+
+	b := buf.Bytes()
+
+	state := 0
+	btn := 0
+	x := 0
+	y := 0 
+
+	for i := range b {
+		switch state {
+		case 0:
+			switch b[i] {
+			case '\x1b':
+				state = 1
+			case '\x9b':
+				state = 2
+			default:
+				return false, false
+			}
+		case 1:
+			if b[i] != '[' {
+				return false, false
+			}
+			state = 2
+		case 2:
+			if b[i] != 'M' {
+				return false, false
+			}
+			state++
+		case 3:
+			btn = int(b[i])
+			state++
+		case 4:
+			x = int(b[i]) - 32 - 1
+			state++
+		case 5:
+			y = int(b[i]) - 32 - 1
+			for i >= 0 {
+				buf.ReadByte()
+				i--
+			}
+			t.postMouseEvent(x, y, btn)
+			return true, true
+		}
+	}
+	return true, false
+}
+
+func (t *tScreen) parseFunctionKey(buf *bytes.Buffer) (bool, bool) {
+	b := buf.Bytes()
+	partial := false
+	for k, esc := range t.keys {
+		if bytes.HasPrefix(b, esc) {
+			// matched
+			var r rune
+			if len(esc) == 1 {
+				r = rune(b[0])
+			}
+			ev := NewEventKey(k, r, ModNone)
+			t.PostEvent(ev)
+			for i := 0; i < len(esc); i++ {
+				buf.ReadByte()
+			}
+			return true, true
+		}
+		if bytes.HasPrefix(esc, b) {
+			partial = true
+		}
+	}
+	return partial, false
+}
+
+func (t *tScreen) parseRune(buf *bytes.Buffer) (bool, bool) {
+	b := buf.Bytes()
+	if b[0] >= ' ' && b[0] <= 0x7F {
+		// printable ASCII easy to deal with -- no encodings
+		buf.ReadByte()
+		ev := NewEventKey(KeyRune, rune(b[0]), ModNone)
+		t.PostEvent(ev)
+		return true, true
+	}
+	if b[0] >= 0x80 {
+		if utf8.FullRune(b) {
+			r, _, e := buf.ReadRune()
+			if e == nil {
+				ev := NewEventKey(KeyRune, r, ModNone)
+				t.PostEvent(ev)
+				return true, true
+			}
+		}
+		// Looks like potential escape
+		return true, false
+	}
+	return false, false
+}
+
 func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 
 	for {
@@ -414,140 +690,46 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 			buf.Reset()
 			return
 		}
-		if b[0] >= ' ' && b[0] <= 0x7F {
-			// printable ASCII easy to deal with -- no encodings
-			buf.ReadByte()
-			ev := NewEventKey(KeyRune, rune(b[0]), ModNone)
-			t.PostEvent(ev)
-			continue
-		}
-		// We assume that the first character of any terminal escape
-		// sequence will be in ASCII -- most often (by far) it is ESC.
-		if b[0] >= 0x80 && utf8.FullRune(b) {
-			r, _, e := buf.ReadRune()
-			if e == nil {
-				ev := NewEventKey(KeyRune, r, ModNone)
-				t.PostEvent(ev)
-				continue
-			}
-		}
-		// Now check the codes we know about
+
 		partials := 0
-		matched := false
-		for k, esc := range t.keys {
-			if bytes.HasPrefix(b, esc) {
-				// matched
-				var r rune
-				if len(esc) == 1 {
-					r = rune(b[0])
-				}
-				ev := NewEventKey(k, r, ModNone)
-				t.PostEvent(ev)
-				matched = true
-				for i := 0; i < len(esc); i++ {
-					buf.ReadByte()
-				}
-				break
-			}
-			if bytes.HasPrefix(esc, b) {
-				partials++
-			}
-		}
 
-		// Mouse events are special, as they carry parameters
-		if !matched && len(t.mouse) != 0 &&
-			bytes.HasPrefix(b, t.mouse) {
-
-			if len(b) >= len(t.mouse)+3 {
-				// mouse record
-				b = b[len(t.mouse):]
-				btns := ButtonNone
-				mod := ModNone
-				switch b[0] & 3 {
-				case 0:
-					// Sometimes mouse button presses get
-					// conflated with wheel events.  So
-					// only count as a wheel event if it
-					// occurs in isolation.
-					if b[0] & 64 != 0 && !t.wasbtn {
-						btns = WheelUp
-					} else {
-						btns = Button1
-						t.wasbtn = true
-					}
-				case 1:
-					if b[0] & 64 != 0 && !t.wasbtn {
-						btns = WheelDown
-					} else {
-						btns = Button2
-						t.wasbtn = true
-					}
-				case 2:
-					btns = Button3
-					t.wasbtn = true
-				case 3:
-					btns = 0
-					t.wasbtn = false
-				}
-				if b[0]&4 != 0 {
-					mod |= ModShift
-				}
-				if b[0]&8 != 0 {
-					mod |= ModMeta
-				}
-				if b[0]&16 != 0 {
-					mod |= ModCtrl
-				}
-				x := int(b[1]) - 33
-				y := int(b[2]) - 33
-				for i := 0; i < len(t.mouse)+3; i++ {
-					buf.ReadByte()
-				}
-				matched = true
-				// We've seen cases where the x or y coordinates
-				// are off screen, normally when click dragging.
-				// Clip them to the window.
-
-				if x > t.w-1 {
-					x = t.w-1
-				}
-				if y > t.h-1 {
-					y = t.h-1
-				}
-				if x < 0 {
-					x = 0
-				}
-				if y < 0 {
-					y = 0
-				}
-				ev := NewEventMouse(x, y, btns, mod)
-				t.PostEvent(ev)
-				continue
-			} else {
-				partials++
-			}
-
-		} else {
+		if part, comp := t.parseRune(buf); comp {
+			continue
+		} else if part {
 			partials++
 		}
 
-		// if we expired, we implicitly fail matches
-		if expire {
-			partials = 0
-		}
-		// If we had no partial matches, just send first character as
-		// a rune.  Others might still work.
-		if partials == 0 && !matched {
-			ev := NewEventKey(KeyRune, rune(b[0]), ModNone)
-			t.PostEvent(ev)
-			buf.ReadByte()
+		if part, comp := t.parseFunctionKey(buf); comp {
+			continue
+		} else if part {
+			partials++
 		}
 
-		if partials > 0 {
-			// We had one or more partial matches, wait for more
-			// data.
-			return
+		if part, comp := t.parseXtermMouse(buf); comp {
+			continue
+		} else if part {
+			partials++
 		}
+
+		if part, comp := t.parseSgrMouse(buf); comp {
+			continue
+		} else if part {
+			partials++
+		}
+
+		if partials == 0 || expire {
+			// Nothing was going to match, or we timed out
+			// waiting for more data -- just deliver the characters
+			// to the app & let them sort it out.
+			by, _ := buf.ReadByte()
+			ev := NewEventKey(KeyRune, rune(by), ModNone)
+			t.PostEvent(ev)
+			continue
+		}
+
+		// well we have some partial data, wait until we get
+		// some more
+		break
 	}
 }
 

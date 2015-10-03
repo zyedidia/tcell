@@ -46,6 +46,10 @@ import (
 // #include <curses.h>
 // #include <term.h>
 // #cgo LDFLAGS: -lcurses
+//
+// void noenv() {
+//	use_env(FALSE);
+// }
 import "C"
 
 func tigetnum(s string) int {
@@ -75,7 +79,8 @@ func tigetstr(s string) string {
 // terminal types.
 func getinfo(name string) (*tcell.Terminfo, error) {
 	rsn := C.int(0)
-	rv, e := C.setupterm(C.CString(name), 1, &rsn)
+	C.noenv()
+	rv, _ := C.setupterm(C.CString(name), 1, &rsn)
 	if rv == C.ERR {
 		switch rsn {
 		case 1:
@@ -87,9 +92,6 @@ func getinfo(name string) (*tcell.Terminfo, error) {
 		default:
 			return nil, errors.New("setupterm failed (other)")
 		}
-	}
-	if e != nil {
-		return nil, e
 	}
 	t := &tcell.Terminfo{}
 	t.Name = name
@@ -149,9 +151,10 @@ func getinfo(name string) (*tcell.Terminfo, error) {
 		// we anticipate that all xterm mouse tracking compatible
 		// terminals understand mouse tracking (1000), but we hope
 		// that those that don't understand any-event tracking (1003)
-		// will at least ignore it.
-		t.EnterMouse = "\x1b[?1000h\x1b[?1003h"
-		t.ExitMouse = "\x1b[?1000l"
+		// will at least ignore it.  Likewise we hope that terminals
+		// that don't understand SGR reporting (1006) just ignore it.
+		t.EnterMouse = "\x1b[?1000h\x1b[?1003h\x1b[?1006h"
+		t.ExitMouse = "\x1b[?1006l\x1b[?1003l\x1b[?1000l"
 	}
 	// We only support colors in ANSI 8 or 256 color mode.
 	if t.Colors < 8 || t.SetFg == "" {
