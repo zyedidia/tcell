@@ -22,12 +22,12 @@ import (
 	"github.com/gdamore/tcell"
 )
 
-var screen tcell.BufferedScreen
+var screen tcell.Screen
 var outMode OutputMode
 
 func Init() error {
 	outMode = OutputNormal
-	if s, e := tcell.NewBufferedScreen(); e != nil {
+	if s, e := tcell.NewScreen(); e != nil {
 		return e
 	} else if e = s.Init(); e != nil {
 		return e
@@ -163,7 +163,7 @@ const (
 
 func SetOutputMode(mode OutputMode) OutputMode {
 	if screen.Colors() < 256 {
-		mode = OutputMode
+		mode = OutputNormal
 	}
 	switch mode {
 	case OutputCurrent:
