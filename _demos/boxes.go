@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/gdamore/tcell"
@@ -57,10 +58,12 @@ func makebox(s tcell.Screen) {
 func main() {
 	s, e := tcell.NewScreen()
 	if e != nil {
-		panic(e.Error())
+		fmt.Fprintf(os.Stderr, "%v\n", e)
+		os.Exit(1)
 	}
 	if e = s.Init(); e != nil {
-		panic(e.Error())
+		fmt.Fprintf(os.Stderr, "%v\n", e)
+		os.Exit(1)
 	}
 
 	s.SetStyle(tcell.StyleDefault.

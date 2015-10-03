@@ -77,9 +77,13 @@ func drawSelect(s tcell.Screen, x1, y1, x2, y2 int, sel bool) {
 func main() {
 	s, e := tcell.NewScreen()
 	if e != nil {
-		fmt.Printf("oops: %v", e)
+		fmt.Fprintf(os.Stderr, "%v\n", e)
+		os.Exit(1)
 	}
-	s.Init()
+	if e := s.Init(); e != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", e)
+		os.Exit(1)
+	}
 	defStyle = tcell.StyleDefault.
 		Background(tcell.ColorBlack).
 		Foreground(tcell.ColorWhite)
