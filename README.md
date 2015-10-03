@@ -56,14 +56,14 @@ Tcell includes enhanced support for Unicode, include wide characters and
 combining characters, provided your terminal can support them.  Note that
 Windows terminals generally don't support the full Unicode repertoire.
 
-# More Function Keys
+## More Function Keys
 
 It also has richer support for a larger number of
 special keys that some terminals can send.
 
 ## Better color handling
 
-Tcell will respect your terminal's color space as specified within your terminfo
+ Tcell will respect your terminal's color space as specified within your terminfo
 entries, so that for example attempts to emit color sequences on VT100 terminals
 won't result in unintended consequences.
 
