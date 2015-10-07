@@ -672,41 +672,54 @@ func (s *cScreen) draw() {
 	if s.clear {
 		s.clearScreen(s.style)
 		s.clear = false
+		s.cells.Invalidate()
 	}
 	buf := make([]uint16, 0, s.w)
 	wcs := buf[:]
 	lstyle := Style(-1) // invalid attribute
 
-	x, y := -1, -1
+	lx, ly := -1, -1
+	ra := make([]rune, 1)
 
-	for row := 0; row < int(s.h); row++ {
-		for col := 0; col < int(s.w); col++ {
+	for y := 0; y < int(s.h); y++ {
+		for x := 0; x < int(s.w); x++ {
 
 			mainc, combc, style, width := s.cells.GetContent(x, y)
-			dirty := s.cells.Dirty(col, row)
+			dirty := s.cells.Dirty(x, y)
+			if style == StyleDefault {
+				style = s.style
+			}
 
 			if !dirty || style != lstyle {
-				// write out any data queud thus far
+				// write out any data queued thus far
 				// because we are going to skip over some
 				// cells, or because we need to change styles
-				s.writeString(x, y, lstyle, wcs)
+				s.writeString(lx, ly, lstyle, wcs)
 				wcs = buf[0:0]
 				lstyle = Style(-1)
 				if !dirty {
 					continue
 				}
 			}
+			if x > s.w - width {
+				mainc = ' '
+				combc = nil
+				width = 1
+			}
 			if len(wcs) == 0 {
 				lstyle = style
-				x = col
-				y = row
+				lx = x
+				ly = y
 			}
-			runes := append([]rune{mainc}, combc...)
-			wcs = append(wcs, utf16.Encode(runes)...)
-			s.cells.SetDirty(col, row, false)
-			col += width - 1
+			ra[0] = mainc
+			wcs = append(wcs, utf16.Encode(ra)...)
+			if len(combc) != 0 {
+				wcs = append(wcs, utf16.Encode(combc)...)
+			}
+			s.cells.SetDirty(x, y, false)
+			x += width - 1
 		}
-		s.writeString(x, y, lstyle, wcs)
+		s.writeString(lx, ly, lstyle, wcs)
 		wcs = buf[0:0]
 		lstyle = Style(-1)
 	}
