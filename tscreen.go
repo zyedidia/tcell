@@ -993,6 +993,18 @@ func (t *tScreen) parseFunctionKey(buf *bytes.Buffer) (bool, bool) {
 	return partial, false
 }
 
+func (t *tScreen) parseAltKey(buf *bytes.Buffer) bool {
+	b := buf.Bytes()
+	if bytes.HasPrefix(b, []byte("\x1b")) && len(b) == 2 {
+		ev := NewEventKey(KeyRune, rune(b[1]), ModAlt)
+		t.PostEvent(ev)
+		buf.ReadByte()
+		buf.ReadByte()
+		return true
+	}
+	return false
+}
+
 func (t *tScreen) parseRune(buf *bytes.Buffer) (bool, bool) {
 	b := buf.Bytes()
 	if b[0] >= ' ' && b[0] <= 0x7F {
@@ -1073,6 +1085,10 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 			} else if part {
 				partials++
 			}
+		}
+
+		if t.parseAltKey(buf) {
+			continue
 		}
 
 		if partials == 0 || expire {
