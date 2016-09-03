@@ -1,4 +1,4 @@
-// Copyright 2015 The Tcell Authors
+// Copyright 2016 The Tcell Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -104,7 +104,7 @@ type mainWindow struct {
 	view   views.View
 	main   *views.CellView
 	keybar *views.SimpleStyledText
-	status *views.SimpleStyledText
+	status *views.SimpleStyledTextBar
 	model  *model
 
 	views.Panel
@@ -146,7 +146,7 @@ func (a *mainWindow) HandleEvent(ev tcell.Event) bool {
 }
 
 func (a *mainWindow) Draw() {
-	a.status.SetMarkup(a.model.loc)
+	a.status.SetLeft(a.model.loc)
 	a.Panel.Draw()
 }
 
@@ -179,19 +179,25 @@ func main() {
 	title.SetRight("Example v1.0", tcell.StyleDefault)
 
 	window.keybar = views.NewSimpleStyledText()
-	window.keybar.SetStyleN(tcell.StyleDefault.
+	window.keybar.RegisterStyle('N', tcell.StyleDefault.
 		Background(tcell.ColorSilver).
 		Foreground(tcell.ColorBlack))
-	window.keybar.SetStyleA(tcell.StyleDefault.
+	window.keybar.RegisterStyle('A', tcell.StyleDefault.
 		Background(tcell.ColorSilver).
 		Foreground(tcell.ColorRed))
 	window.keybar.SetMarkup("[%AQ%N] Quit")
 
-	window.status = views.NewSimpleStyledText()
-	window.status.SetStyleN(tcell.StyleDefault.
+	window.status = views.NewSimpleStyledTextBar()
+	window.status.SetStyle(tcell.StyleDefault.
+		Background(tcell.ColorBlue).
+		Foreground(tcell.ColorYellow))
+	window.status.RegisterLeftStyle('N', tcell.StyleDefault.
 		Background(tcell.ColorYellow).
 		Foreground(tcell.ColorBlack))
-	window.status.SetMarkup("My status is here.")
+
+	window.status.SetLeft("My status is here.")
+	window.status.SetRight("%UCellView%N demo!")
+	window.status.SetCenter("Cen%ST%Ner")
 
 	window.main = views.NewCellView()
 	window.main.SetModel(window.model)
