@@ -379,6 +379,8 @@ outer:
 }
 
 func (t *tScreen) Fini() {
+	fmt.Printf("\x1b[?2004l")
+
 	ti := t.ti
 	t.Lock()
 	t.cells.Resize(0, 0)
@@ -392,8 +394,6 @@ func (t *tScreen) Fini() {
 	t.clear = false
 	t.fini = true
 	t.Unlock()
-
-	fmt.Printf("\x1b[?20041")
 
 	if t.quit != nil {
 		close(t.quit)
