@@ -707,7 +707,8 @@ func (s *cScreen) draw() {
 		for x := 0; x < int(s.w); x++ {
 
 			mainc, combc, style, width := s.cells.GetContent(x, y)
-			dirty := s.cells.Dirty(x, y)
+//			dirty := s.cells.Dirty(x, y)
+			dirty := true
 			if style == StyleDefault {
 				style = s.style
 			}
