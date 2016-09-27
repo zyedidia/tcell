@@ -664,6 +664,7 @@ func (s *cScreen) SetContent(x, y int, mainc rune, combc []rune, style Style) {
 	s.Lock()
 	if !s.fini {
 		s.cells.SetContent(x, y, mainc, combc, style)
+		s.cells.SetDirty(x, y, true)
 	}
 	s.Unlock()
 }
@@ -681,11 +682,12 @@ func (s *cScreen) writeString(x, y int, style Style, ch []uint16) {
 		return
 	}
 	nw := uint32(len(ch))
+	nw2 := uint32(0)
 	procSetConsoleTextAttribute.Call(
 		uintptr(s.out),
 		uintptr(mapStyle(style)))
 	s.setCursorPos(x, y)
-	syscall.WriteConsole(s.out, &ch[0], nw, &nw, nil)
+	syscall.WriteConsole(s.out, &ch[0], nw, &nw2, nil)
 }
 
 func (s *cScreen) draw() {
@@ -697,7 +699,7 @@ func (s *cScreen) draw() {
 		s.cells.Invalidate()
 	}
 	buf := make([]uint16, 0, s.w)
-	wcs := buf[:]
+	wcs := buf[0:0]
 	lstyle := Style(-1) // invalid attribute
 
 	lx, ly := -1, -1
@@ -707,8 +709,7 @@ func (s *cScreen) draw() {
 		for x := 0; x < int(s.w); x++ {
 
 			mainc, combc, style, width := s.cells.GetContent(x, y)
-//			dirty := s.cells.Dirty(x, y)
-			dirty := true
+			dirty := s.cells.Dirty(x, y)
 			if style == StyleDefault {
 				style = s.style
 			}
@@ -721,6 +722,7 @@ func (s *cScreen) draw() {
 				wcs = buf[0:0]
 				lstyle = Style(-1)
 				if !dirty {
+					x += width - 1
 					continue
 				}
 			}
