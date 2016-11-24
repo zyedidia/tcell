@@ -136,6 +136,8 @@ func (s *simscreen) Init() error {
 	return nil
 }
 
+func (s *simscreen) Next() {}
+
 func (s *simscreen) Fini() {
 	s.Lock()
 	s.fini = true

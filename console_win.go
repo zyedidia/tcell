@@ -199,6 +199,8 @@ func (s *cScreen) PostEventWait(ev Event) {
 	s.evch <- ev
 }
 
+func (s *cScreen) Next() {}
+
 func (s *cScreen) PostEvent(ev Event) error {
 	select {
 	case s.evch <- ev:

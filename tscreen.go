@@ -101,11 +101,13 @@ type tScreen struct {
 	truecolor bool
 	escaped   bool
 	buttondn  bool
+	next      chan bool
 
 	sync.Mutex
 }
 
 func (t *tScreen) Init() error {
+	t.next = make(chan bool, 1)
 	t.evch = make(chan Event, 10)
 	t.indoneq = make(chan struct{})
 	t.charset = "UTF-8"
@@ -171,6 +173,10 @@ func (t *tScreen) Init() error {
 	go t.inputLoop()
 
 	return nil
+}
+
+func (t *tScreen) Next() {
+	t.next <- true
 }
 
 func (t *tScreen) prepareKeyMod(key Key, mod ModMask, val string) {
@@ -431,6 +437,7 @@ func (t *tScreen) Fini() {
 		close(t.quit)
 	}
 	t.termioFini()
+	close(t.next)
 }
 
 func (t *tScreen) SetStyle(style Style) {
@@ -1312,6 +1319,7 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 
 		// well we have some partial data, wait until we get
 		// some more
+		t.Next()
 		break
 	}
 }
@@ -1334,7 +1342,7 @@ func (t *tScreen) inputLoop() {
 			t.draw()
 			t.Unlock()
 			continue
-		default:
+		case <-t.next:
 		}
 		n, e := t.in.Read(chunk)
 		switch e {
