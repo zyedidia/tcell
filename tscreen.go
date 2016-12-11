@@ -22,7 +22,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 
 	"golang.org/x/text/transform"
@@ -882,7 +881,7 @@ func (t *tScreen) clip(x, y int) (int, int) {
 	return x, y
 }
 
-func (t *tScreen) postMouseEvent(x, y, btn int, motion bool) {
+func (t *tScreen) postMouseEvent(x, y, btn int, motion bool, raw string) {
 
 	// XTerm mouse events only report at most one button at a time,
 	// which may include a wheel button.  Wheel motion events are
@@ -938,7 +937,7 @@ func (t *tScreen) postMouseEvent(x, y, btn int, motion bool) {
 	// to the screen in that case.
 	x, y = t.clip(x, y)
 
-	ev := NewEventMouse(x, y, button, mod, motion)
+	ev := NewEventMouse(x, y, button, mod, motion, raw)
 	t.PostEvent(ev)
 }
 
@@ -1055,7 +1054,7 @@ func (t *tScreen) parseSgrMouse(buf *bytes.Buffer) (bool, bool) {
 				buf.ReadByte()
 				i--
 			}
-			t.postMouseEvent(x, y, btn, motion)
+			t.postMouseEvent(x, y, btn, motion, string(b))
 			return true, true
 		}
 	}
@@ -1113,7 +1112,7 @@ func (t *tScreen) parseXtermMouse(buf *bytes.Buffer) (bool, bool) {
 				buf.ReadByte()
 				i--
 			}
-			t.postMouseEvent(x, y, btn, false)
+			t.postMouseEvent(x, y, btn, false, string(b))
 			return true, true
 		}
 	}
@@ -1139,7 +1138,7 @@ func (t *tScreen) parseFunctionKey(buf *bytes.Buffer) (bool, bool) {
 				mod |= ModAlt
 				t.escaped = false
 			}
-			ev := NewEventKey(k.key, r, mod)
+			ev := NewEventKey(k.key, r, mod, buf.String())
 			t.PostEvent(ev)
 			for i := 0; i < len(esc); i++ {
 				buf.ReadByte()
@@ -1162,7 +1161,7 @@ func (t *tScreen) parseRune(buf *bytes.Buffer) (bool, bool) {
 			mod = ModAlt
 			t.escaped = false
 		}
-		ev := NewEventKey(KeyRune, rune(b[0]), mod)
+		ev := NewEventKey(KeyRune, rune(b[0]), mod, string(b))
 		t.PostEvent(ev)
 		buf.ReadByte()
 		return true, true
@@ -1188,7 +1187,7 @@ func (t *tScreen) parseRune(buf *bytes.Buffer) (bool, bool) {
 					mod = ModAlt
 					t.escaped = false
 				}
-				ev := NewEventKey(KeyRune, r, mod)
+				ev := NewEventKey(KeyRune, r, mod, string(b))
 				t.PostEvent(ev)
 			}
 			for nin > 0 {
@@ -1212,7 +1211,7 @@ func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer) (bool, bool) {
 		if strings.HasSuffix(str, "\x1b[201~") {
 			// The bracketed paste has ended
 			// Strip out the start and end sequences
-			ev := NewEventPaste(str[6 : len(b)-6])
+			ev := NewEventPaste(str[6:len(b)-6], buf.String())
 			t.PostEvent(ev)
 			for i := 0; i < len(b); i++ {
 				buf.ReadByte()
@@ -1237,7 +1236,7 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 			return
 		}
 		if !bytes.Contains(b, []byte("\x1b")) && utf8.RuneCount(b) > 1 {
-			ev := &EventPaste{t: time.Now(), text: string(bytes.Replace(b, []byte("\r"), []byte("\n"), -1))}
+			ev := NewEventPaste(string(bytes.Replace(b, []byte("\r"), []byte("\n"), -1)), buf.String())
 			t.PostEvent(ev)
 			for i := 0; i < len(b); i++ {
 				buf.ReadByte()
@@ -1289,7 +1288,7 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 			// should only do this for control characters like ESC.
 			if b[0] == '\x1b' {
 				if len(b) == 1 {
-					ev := NewEventKey(KeyEsc, 0, ModNone)
+					ev := NewEventKey(KeyEsc, 0, ModNone, buf.String())
 					t.PostEvent(ev)
 					t.escaped = false
 				} else {
@@ -1305,7 +1304,7 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 				t.escaped = false
 				mod = ModAlt
 			}
-			ev := NewEventKey(KeyRune, rune(by), mod)
+			ev := NewEventKey(KeyRune, rune(by), mod, string(b))
 			t.PostEvent(ev)
 			continue
 		}

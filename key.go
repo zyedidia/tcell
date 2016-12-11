@@ -47,12 +47,17 @@ type EventKey struct {
 	mod ModMask
 	key Key
 	ch  rune
+	raw string
 }
 
 // When returns the time when this Event was created, which should closely
 // match the time when the key was pressed.
 func (ev *EventKey) When() time.Time {
 	return ev.t
+}
+
+func (ev *EventKey) Raw() string {
+	return ev.raw
 }
 
 // Rune returns the rune corresponding to the key press, if it makes sense.
@@ -258,7 +263,7 @@ func (ev *EventKey) Name() string {
 // ASCII control sequences if KeyRune is passed for Key, but if the caller
 // has more precise information it should set that specifically.  Callers
 // that aren't sure about modifier state (most) should just pass ModNone.
-func NewEventKey(k Key, ch rune, mod ModMask) *EventKey {
+func NewEventKey(k Key, ch rune, mod ModMask, raw string) *EventKey {
 	if k == KeyRune && (ch < ' ' || ch == 0x7f) {
 		// Turn specials into proper key codes.  This is for
 		// control characters and the DEL.
@@ -273,7 +278,7 @@ func NewEventKey(k Key, ch rune, mod ModMask) *EventKey {
 			}
 		}
 	}
-	return &EventKey{t: time.Now(), key: k, ch: ch, mod: mod}
+	return &EventKey{t: time.Now(), key: k, ch: ch, mod: mod, raw: raw}
 }
 
 // ModMask is a mask of modifier keys.  Note that it will not always be

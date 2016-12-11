@@ -25,6 +25,8 @@ type EventResize struct {
 	h int
 }
 
+func (ev *EventResize) Raw() string { return "" }
+
 // NewEventResize creates an EventResize with the new updated window size,
 // which is given in character cells.
 func NewEventResize(width, height int) *EventResize {

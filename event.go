@@ -23,6 +23,7 @@ import (
 type Event interface {
 	// When reports the time when the event was generated.
 	When() time.Time
+	Raw() string
 }
 
 // EventTime is a simple base event class, suitable for easy reuse.
