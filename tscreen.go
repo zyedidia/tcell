@@ -420,7 +420,14 @@ func (t *tScreen) Fini() {
 	t.TPuts(ti.Clear)
 	t.TPuts(ti.ExitCA)
 	t.TPuts(ti.ExitKeypad)
-	t.TPuts("\x1b[?2004l")
+	t.TPuts("\x1b[?2004l"
+	//Reset terminal title
+	titlestring - "\033k" + os.Getenv("USER") + "@" + os.Hostname() + ": " + os.Getwd() + "\033\\"
+	t.tPuts(titlestring)
+	for i, s := range strings.Split(os.Getenv("SHELL"),"/") {
+		titlestring = "\033]2;" + s + "\007"
+	}
+	t.tPuts(titlestring)
 	// t.TPuts(ti.TParm(ti.MouseMode, 0))
 	t.DisableMouse()
 	t.curstyle = Style(-1)
@@ -1430,3 +1437,8 @@ func (t *tScreen) HasKey(k Key) bool {
 }
 
 func (t *tScreen) Resize(int, int, int, int) {}
+
+func (t *tScreen) SetTitle(title string) {
+	t.tputs("\033k" + title + "\033\\")
+	t.tputs("\033]2;" + title + "\007")
+}
