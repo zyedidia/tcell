@@ -420,7 +420,7 @@ func (t *tScreen) Fini() {
 	t.TPuts(ti.Clear)
 	t.TPuts(ti.ExitCA)
 	t.TPuts(ti.ExitKeypad)
-	t.TPuts("\x1b[?2004l"
+	t.TPuts("\x1b[?2004l")
 	//Reset terminal title. USERNAME for Windows support. Assumes USER and USERNAME will not both be set.
 	titlestring := "\033k" + os.Getenv("USER") + os.Getenv("USERNAME") + "@" + os.Hostname() + ": " + os.Getwd() + "\033\\"
 	t.TPuts(titlestring)
