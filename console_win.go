@@ -990,5 +990,5 @@ func (s *cScreen) HasKey(k Key) bool {
 
 //Stub
 func (c *cScreen) SetTitle(title string) {
-	procSetConsoleTitle.Call(uintptr(title))
+	procSetConsoleTitle.Call(uintptr(unsafe.Pointer(title)))
 }
