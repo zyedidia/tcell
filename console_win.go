@@ -111,6 +111,8 @@ var (
 	procSetConsoleWindowInfo       = k32.NewProc("SetConsoleWindowInfo")
 	procSetConsoleScreenBufferSize = k32.NewProc("SetConsoleScreenBufferSize")
 	procSetConsoleTextAttribute    = k32.NewProc("SetConsoleTextAttribute")
+	procGetConsoleTitle            = k32.NewProc("GetConsoleTitle")
+	procSetConsoleTitle            = k32.NewProc("SetConsoleTitle")
 )
 
 // NewConsoleScreen returns a Screen for the Windows console associated
@@ -987,4 +989,6 @@ func (s *cScreen) HasKey(k Key) bool {
 }
 
 //Stub
-func (c *cScreen) SetTitle(title string) {}
+func (c *cScreen) SetTitle(title string) {
+	procSetConsoleTitle.Call(title)
+}
