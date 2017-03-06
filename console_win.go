@@ -112,7 +112,7 @@ var (
 	procSetConsoleScreenBufferSize = k32.NewProc("SetConsoleScreenBufferSize")
 	procSetConsoleTextAttribute    = k32.NewProc("SetConsoleTextAttribute")
 	procGetConsoleTitle            = k32.NewProc("GetConsoleTitle")
-	procSetConsoleTitle            = k32.NewProc("SetConsoleTitle")
+	procSetConsoleTitle            = k32.NewProc("SetConsoleTitleW")
 )
 
 // NewConsoleScreen returns a Screen for the Windows console associated
