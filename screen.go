@@ -212,7 +212,3 @@ func NewScreen() (Screen, error) {
 		return nil, e
 	}
 }
-func (t *tScreen) SetTitle(title string) {
-	t.TPuts("\033k" + title + "\033\\")
-	t.TPuts("\033]2;" + title + "\007")
-}
