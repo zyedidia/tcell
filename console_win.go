@@ -175,7 +175,7 @@ func (s *cScreen) DisableMouse() {
 	s.setInMode(modeResizeEn)
 }
 
-func (s *cScreen) GetOriginalTitle() string bool{
+func (s *cScreen) GetOriginalTitle() (string bool){
 	otitle string
 	procGetConsoleOriginalTitle.Call(
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(otitle))),
