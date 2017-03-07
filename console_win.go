@@ -209,8 +209,7 @@ func (s *cScreen) Fini() {
 	s.setCursorPos(0, 0)
 	procSetConsoleTextAttribute.Call(
 		uintptr(s.out),
-		uintptr(s.mapStyle(StyleDefault))
-	)
+		uintptr(s.mapStyle(StyleDefault)))
 
 	close(s.quit)
 	syscall.Close(s.in)
