@@ -175,7 +175,7 @@ func (s *cScreen) DisableMouse() {
 	s.setInMode(modeResizeEn)
 }
 
-func (s *cScreen) GetOriginalTitle() string, bool{
+func (s *cScreen) GetOriginalTitle() string bool{
 	otitle string
 	procGetConsoleOriginalTitle.Call(
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(otitle))),
@@ -210,7 +210,8 @@ func (s *cScreen) Fini() {
 	s.setCursorPos(0, 0)
 	procSetConsoleTextAttribute.Call(
 		uintptr(s.out),
-		uintptr(s.mapStyle(StyleDefault)))
+		uintptr(s.mapStyle(StyleDefault))
+	)
 
 	close(s.quit)
 	syscall.Close(s.in)
