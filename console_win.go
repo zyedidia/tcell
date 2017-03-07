@@ -198,9 +198,9 @@ func (s *cScreen) Fini() {
 	s.fini = true
 	s.Unlock()
 	//Don't enable this unless you're willing to debug it!
-	if title, ok := s.GetOriginalTitle() {
-		s.SetTitle(title)
-	}
+	//if title, ok := s.GetOriginalTitle() {
+	//	s.SetTitle(title)
+	//}
 	s.setCursorInfo(&s.ocursor)
 	s.setInMode(s.oimode)
 	s.setOutMode(s.oomode)
