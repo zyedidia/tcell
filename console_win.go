@@ -179,8 +179,7 @@ func (s *cScreen) GetOriginalTitle() (title string, err bool){
 	otitle := ""
 	procGetConsoleOriginalTitle.Call(
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(otitle))),
-		80
-	)
+		80)
 	if otitle != nil {
 		return otitle, true
 	}
@@ -199,7 +198,7 @@ func (s *cScreen) Fini() {
 	s.fini = true
 	s.Unlock()
 	//Don't enable this unless you're willing to debug it!
-	if title, ok := s.GetOriginalTitle(){
+	if title, ok := s.GetOriginalTitle() {
 		s.SetTitle(title)
 	}
 	s.setCursorInfo(&s.ocursor)
