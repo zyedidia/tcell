@@ -180,7 +180,7 @@ func (s *cScreen) GetOriginalTitle() (title string, err bool){
 	procGetConsoleOriginalTitle.Call(
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(otitle))),
 		80)
-	if otitle != nil {
+	if otitle != "" {
 		return otitle, true
 	}
 	return otitle, false
