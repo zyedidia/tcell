@@ -112,7 +112,6 @@ var (
 	procSetConsoleWindowInfo       = k32.NewProc("SetConsoleWindowInfo")
 	procSetConsoleScreenBufferSize = k32.NewProc("SetConsoleScreenBufferSize")
 	procSetConsoleTextAttribute    = k32.NewProc("SetConsoleTextAttribute")
-	procGetConsoleOriginalTitle    = k32.NewProc("GetConsoleOriginalTitleW")
 	procSetConsoleTitle            = k32.NewProc("SetConsoleTitleW")
 )
 
@@ -175,17 +174,6 @@ func (s *cScreen) DisableMouse() {
 	s.setInMode(modeResizeEn)
 }
 
-func (s *cScreen) GetOriginalTitle() (title string, err bool){
-	otitle := ""
-	procGetConsoleOriginalTitle.Call(
-		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(otitle))),
-		80)
-	if otitle != "" {
-		return otitle, true
-	}
-	return otitle, false
-}
-
 func (s *cScreen) SetTitle(title string) {
 	procSetConsoleTitle.Call(uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(title))))
 }
@@ -197,10 +185,6 @@ func (s *cScreen) Fini() {
 	s.cury = -1
 	s.fini = true
 	s.Unlock()
-	//Don't enable this unless you're willing to debug it!
-	if title, ok := s.GetOriginalTitle() {
-		s.SetTitle(title)
-	}
 	s.setCursorInfo(&s.ocursor)
 	s.setInMode(s.oimode)
 	s.setOutMode(s.oomode)
