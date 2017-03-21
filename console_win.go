@@ -990,4 +990,3 @@ func (s *cScreen) HasKey(k Key) bool {
 
 	return valid[k]
 }
-

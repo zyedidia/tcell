@@ -423,11 +423,15 @@ func (t *tScreen) Fini() {
 	//Reset terminal title. USERNAME for Windows support. Assumes USER and USERNAME will not both be set.
 	wd, _ := os.Getwd()
 	host, _ := os.Hostname()
-	titlestring := "\033]2;" + os.Getenv("USER") + os.Getenv("USERNAME") + "@" + host + ": " + wd + "\007"
-	t.TPuts(titlestring)
+	var titlestring string
+	if strings.Contains(os.Getenv("TERM"), "xterm"){
+		titlestring = "\033]2;" + os.Getenv("USER") + os.Getenv("USERNAME") + "@" + host + ": " + wd + "\007" 
+		t.TPuts(titlestring)
+	}
 	if strings.Compare(os.Getenv("TERM") , "screen") == 0 {
 		for _, s := range strings.Split(os.Getenv("SHELL"), "/") {
 			titlestring = "\033k" + s + "\033\\"
+			titlestring = "\033]2;" + os.Getenv("USER") + os.Getenv("USERNAME") + "@" + host + ": " + wd + "\007"
 		}
 		t.TPuts(titlestring)
 	}
@@ -438,7 +442,6 @@ func (t *tScreen) Fini() {
 	t.clear = false
 	t.fini = true
 	t.Unlock()
-
 	if t.quit != nil {
 		close(t.quit)
 	}
@@ -1446,5 +1449,7 @@ func (t *tScreen) SetTitle(title string) {
 	if strings.Compare(os.Getenv("TERM") , "screen") == 0 {
 		t.TPuts("\033k" + title + "\033\\")
 	}
-	t.TPuts("\033]2;" + title + "\007")
+	if strings.Contains(os.Getenv("TERM") , "xterm") {
+		t.TPuts("\033]2;" + title + "\007")
+	}
 }
