@@ -1379,13 +1379,6 @@ func (t *tScreen) inputLoop() {
 
 	for {
 		select {
-		case <-time.After(50 * time.Millisecond):
-			if buf.Len() > 0 {
-				// After 200 milliseconds of nothing time out and parse
-				// whatever was last sent by the terminal
-				t.scanInput(buf, true)
-			}
-			continue
 		case <-t.quit:
 			close(t.indoneq)
 			return
