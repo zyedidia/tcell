@@ -1250,7 +1250,7 @@ func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer) (bool, bool) {
 	return false, false
 }
 
-func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
+func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) bool {
 
 	t.Lock()
 	defer t.Unlock()
@@ -1259,7 +1259,7 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 		b := buf.Bytes()
 		if len(b) == 0 {
 			buf.Reset()
-			return
+			return false
 		}
 
 		escseq = buf.String()
@@ -1274,7 +1274,7 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 			partials++
 		}
 
-		if !bytes.Contains(b, []byte("\x1b")) && utf8.RuneCount(b) > 1 {
+		if !bytes.Contains(b, []byte("\x1b")) && utf8.RuneCount(b) > 16 {
 			ev := &EventPaste{t: time.Now(), text: string(bytes.Replace(b, []byte("\r"), []byte("\n"), -1))}
 			ev.esc = escseq
 			t.PostEvent(ev)
@@ -1317,7 +1317,7 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 				// We need more data
 				// For example, if the sequence is `\x1b[`, this could
 				// be alt-[ or it could be the beginning of a mouse sequence
-				break
+				return true
 			}
 
 			if len(b) == 1 {
@@ -1350,12 +1350,12 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 			t.PostEvent(ev)
 
 			buf.Reset()
-			return
+			return false
 		}
 
 		// well we have some partial data, wait until we get
 		// some more
-		break
+		return false
 	}
 }
 
@@ -1368,7 +1368,6 @@ func (t *tScreen) inputLoop() {
 		for {
 			n, e := t.in.Read(chunk)
 			t.inputchan <- InputPacket{n, e, chunk}
-			time.Sleep(10 * time.Millisecond)
 
 			if e != nil && e != io.EOF {
 				close(t.inputchan)
@@ -1376,6 +1375,9 @@ func (t *tScreen) inputLoop() {
 			}
 		}
 	}()
+
+	esctimer := time.NewTimer(100 * time.Millisecond)
+	esctimer.Stop()
 
 	for {
 		select {
@@ -1390,6 +1392,10 @@ func (t *tScreen) inputLoop() {
 			t.cells.Invalidate()
 			t.draw()
 			t.Unlock()
+			continue
+		case <-esctimer.C:
+			t.scanInput(buf, true)
+			esctimer.Stop()
 			continue
 		case in, ok := <-t.inputchan:
 			if !ok {
@@ -1412,7 +1418,11 @@ func (t *tScreen) inputLoop() {
 			}
 			buf.Write(chunk[:n])
 			// Now we need to parse the input buffer for events
-			t.scanInput(buf, false)
+			esc := t.scanInput(buf, false)
+			if esc {
+				esctimer.Stop()
+				esctimer.Reset(20 * time.Millisecond)
+			}
 		}
 	}
 }
