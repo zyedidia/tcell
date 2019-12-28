@@ -1420,8 +1420,9 @@ func (t *tScreen) inputLoop() {
 			// Now we need to parse the input buffer for events
 			esc := t.scanInput(buf, false)
 			if esc {
+				// we'll wait for more partials or time out in 100ms
 				esctimer.Stop()
-				esctimer.Reset(20 * time.Millisecond)
+				esctimer.Reset(100 * time.Millisecond)
 			}
 		}
 	}
