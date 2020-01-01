@@ -123,6 +123,7 @@ type tScreen struct {
 	truecolor bool
 	escaped   bool
 	buttondn  bool
+	rawseq    []string
 
 	sync.Mutex
 }
@@ -131,6 +132,7 @@ func (t *tScreen) Init() error {
 	t.evch = make(chan Event, 10)
 	t.indoneq = make(chan struct{})
 	t.keychan = make(chan []byte, 10)
+	t.rawseq = make([]string, 0, 4)
 	t.keytimer = time.NewTimer(time.Millisecond * 50)
 	t.charset = "UTF-8"
 
@@ -196,6 +198,10 @@ func (t *tScreen) Init() error {
 	go t.inputLoop()
 
 	return nil
+}
+
+func (t *tScreen) RegisterRawSeq(r string) {
+	t.rawseq = append(t.rawseq, r)
 }
 
 func (t *tScreen) prepareKeyMod(key Key, mod ModMask, val string) {
@@ -1349,6 +1355,17 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 
 		if partials == 0 || expire {
 			if b[0] == '\x1b' {
+				strb := string(b)
+				for _, r := range t.rawseq {
+					if strings.HasPrefix(strb, r) {
+						// a registered raw sequence matched the prefix
+						res = append(res, NewEventRaw(r))
+						t.escbuf.Reset()
+						for i := 0; i < len(r); i++ {
+							buf.ReadByte()
+						}
+					}
+				}
 				if len(b) == 1 {
 					res = append(res, NewEventKey(KeyEsc, 0, ModNone, "\x1b"))
 					t.escbuf.Reset()
@@ -1366,12 +1383,7 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 			// should only do this for control characters like ESC.
 			by, _ := buf.ReadByte()
 			t.escbuf.WriteByte(by)
-			mod := ModNone
-			if t.escaped {
-				t.escaped = false
-				mod = ModAlt
-			}
-			res = append(res, NewEventKey(KeyRune, rune(by), mod, t.escbuf.String()))
+			res = append(res, NewEventRaw(t.escbuf.String()))
 			t.escbuf.Reset()
 			continue
 		}

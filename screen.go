@@ -193,6 +193,11 @@ type Screen interface {
 	// menus, displayed hot-keys, etc.  Note that KeyRune (literal
 	// runes) is always true.
 	HasKey(Key) bool
+
+	// RegisterRawSeq registers a user-defined escape code that should
+	// be parsed by the screen
+	// Not defined for non-posix systems
+	RegisterRawSeq(string)
 }
 
 // NewScreen returns a default Screen suitable for the user's terminal
