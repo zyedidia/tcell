@@ -30,12 +30,17 @@ package tcell
 //
 // Maybe someday Apple will fix there tty driver, but its been broken for
 // a long time (probably forever) so holding one's breath is contraindicated.
+//
+// NOTE: In this fork of tcell, we fix this issue by using the library
+// zyedidia/poller to properly interface with the tty such that when we
+// close it, it actually closes
 
 import (
-	"os"
 	"os/signal"
 	"syscall"
 	"unsafe"
+
+	"github.com/zyedidia/poller"
 )
 
 type termiosPrivate syscall.Termios
@@ -48,16 +53,16 @@ func (t *tScreen) termioInit() error {
 	var ioc uintptr
 	t.tiosp = &termiosPrivate{}
 
-	if t.in, e = os.OpenFile("/dev/tty", os.O_RDONLY, 0); e != nil {
+	if t.in, e = poller.Open("/dev/tty", poller.O_RO); e != nil {
 		goto failed
 	}
-	if t.out, e = os.OpenFile("/dev/tty", os.O_WRONLY, 0); e != nil {
+	if t.out, e = poller.Open("/dev/tty", poller.O_WO); e != nil {
 		goto failed
 	}
 
 	tios = uintptr(unsafe.Pointer(t.tiosp))
 	ioc = uintptr(syscall.TIOCGETA)
-	fd = uintptr(t.out.Fd())
+	fd = uintptr(t.out.(*poller.FD).Sysfd())
 	if _, _, e1 := syscall.Syscall6(syscall.SYS_IOCTL, fd, ioc, tios, 0, 0, 0); e1 != 0 {
 		e = e1
 		goto failed
@@ -91,10 +96,10 @@ func (t *tScreen) termioInit() error {
 
 failed:
 	if t.in != nil {
-		t.in.Close()
+		t.in.(*poller.FD).Close()
 	}
 	if t.out != nil {
-		t.out.Close()
+		t.out.(*poller.FD).Close()
 	}
 	return e
 }
@@ -106,26 +111,21 @@ func (t *tScreen) termioFini() {
 	<-t.indoneq
 
 	if t.out != nil {
-		fd := uintptr(t.out.Fd())
+		fd := uintptr(t.out.(*poller.FD).Sysfd())
 		ioc := uintptr(syscall.TIOCSETAF)
 		tios := uintptr(unsafe.Pointer(t.tiosp))
 		syscall.Syscall6(syscall.SYS_IOCTL, fd, ioc, tios, 0, 0, 0)
-		t.out.Close()
+		t.out.(*poller.FD).Close()
 	}
 
-	// See above -- we background this call which might help, but
-	// really the tty is probably open.
-
-	go func() {
-		if t.in != nil {
-			t.in.Close()
-		}
-	}()
+	if t.in != nil {
+		t.in.(*poller.FD).Close()
+	}
 }
 
 func (t *tScreen) getWinSize() (int, int, error) {
 
-	fd := uintptr(t.out.Fd())
+	fd := uintptr(t.out.(*poller.FD).Sysfd())
 	dim := [4]uint16{}
 	dimp := uintptr(unsafe.Pointer(&dim))
 	ioc := uintptr(syscall.TIOCGWINSZ)
