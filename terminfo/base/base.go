@@ -24,9 +24,9 @@ package base
 import (
 	// The following imports just register themselves --
 	// thse are the terminal types we aggregate in this package.
-	_ "github.com/gdamore/tcell/terminfo/a/ansi"
-	_ "github.com/gdamore/tcell/terminfo/v/vt100"
-	_ "github.com/gdamore/tcell/terminfo/v/vt102"
-	_ "github.com/gdamore/tcell/terminfo/v/vt220"
-	_ "github.com/gdamore/tcell/terminfo/x/xterm"
+	_ "github.com/zyedidia/tcell/terminfo/a/ansi"
+	_ "github.com/zyedidia/tcell/terminfo/v/vt100"
+	_ "github.com/zyedidia/tcell/terminfo/v/vt102"
+	_ "github.com/zyedidia/tcell/terminfo/v/vt220"
+	_ "github.com/zyedidia/tcell/terminfo/x/xterm"
 )

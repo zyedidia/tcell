@@ -2,7 +2,7 @@
 
 package vt320
 
-import "github.com/gdamore/tcell/terminfo"
+import "github.com/zyedidia/tcell/terminfo"
 
 func init() {
 
