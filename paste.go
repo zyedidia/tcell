@@ -20,6 +20,7 @@ import "time"
 type EventPaste struct {
 	t    time.Time
 	text string
+	esc  string
 }
 
 // When returns the time when this Event was created, which should closely
@@ -34,13 +35,14 @@ func (e *EventPaste) Text() string {
 }
 
 func (e *EventPaste) EscSeq() string {
-	return pasteBegin + e.text + pasteEnd
+	return e.esc
 }
 
 // NewEventPaste creates a new paste event from the given text
-func NewEventPaste(text string) *EventPaste {
+func NewEventPaste(text string, esc string) *EventPaste {
 	return &EventPaste{
 		t:    time.Now(),
 		text: text,
+		esc:  esc,
 	}
 }

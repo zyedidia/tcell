@@ -1227,6 +1227,32 @@ func (t *tScreen) parseRune(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 	return true, false
 }
 
+// This function interprets a block of characters without escapes as a paste
+// Generally the terminal will only send large blocks of text if a paste is
+// occurring, though it may send small blocks of characters together if the user
+// is typing quickly
+// We set a threshold of 8 bytes before making the block into a paste
+func (t *tScreen) parsePaste(buf *bytes.Buffer, evs *[]Event) bool {
+	b := buf.Bytes()
+
+	if b[0] != '\x1b' {
+		esci := bytes.IndexByte(b, '\x1b')
+		if esci != -1 {
+			b = b[:esci]
+		}
+		if len(b) > 8 {
+			for i := 0; i < len(b); i++ {
+				by, _ := buf.ReadByte()
+				t.escbuf.WriteByte(by)
+			}
+			*evs = append(*evs, NewEventPaste(string(b), t.escbuf.String()))
+			t.escbuf.Reset()
+			return true
+		}
+	}
+	return false
+}
+
 func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 	b := buf.Bytes()
 
@@ -1237,11 +1263,12 @@ func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer, evs *[]Event) (bool, bo
 		if strings.HasSuffix(str, pasteEnd) {
 			// The bracketed paste has ended
 			// Strip out the start and end sequences
-			*evs = append(*evs, NewEventPaste(str[6:len(b)-6]))
-			t.escbuf.Reset()
 			for i := 0; i < len(b); i++ {
-				buf.ReadByte()
+				by, _ := buf.ReadByte()
+				t.escbuf.WriteByte(by)
 			}
+			*evs = append(*evs, NewEventPaste(str[6:len(b)-6], t.escbuf.String()))
+			t.escbuf.Reset()
 			return true, true
 		}
 		// There is still more coming
@@ -1280,6 +1307,10 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 		}
 
 		partials := 0
+
+		if t.parsePaste(buf, &res) {
+			continue
+		}
 
 		if part, comp := t.parseBracketedPaste(buf, &res); comp {
 			continue
