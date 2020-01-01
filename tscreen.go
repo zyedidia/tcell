@@ -1396,7 +1396,7 @@ func (t *tScreen) mainLoop() {
 func (t *tScreen) inputLoop() {
 
 	for {
-		chunk := make([]byte, 128)
+		chunk := make([]byte, 4096)
 		n, e := t.in.Read(chunk)
 		switch e {
 		case io.EOF:
