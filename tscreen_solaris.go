@@ -40,7 +40,7 @@ func (t *tScreen) termioInit() error {
 		goto failed
 	}
 
-	tio, e = unix.IoctlGetTermios(int(t.out.Fd()), unix.TCGETS)
+	tio, e = unix.IoctlGetTermios(int(t.out.(*os.File).Fd()), unix.TCGETS)
 	if e != nil {
 		goto failed
 	}
@@ -70,7 +70,7 @@ func (t *tScreen) termioInit() error {
 	raw.Cc[unix.VMIN] = 1
 	raw.Cc[unix.VTIME] = 0
 
-	e = unix.IoctlSetTermios(int(t.out.Fd()), unix.TCSETS, raw)
+	e = unix.IoctlSetTermios(int(t.out.(*os.File).Fd()), unix.TCSETS, raw)
 	if e != nil {
 		goto failed
 	}
@@ -85,10 +85,10 @@ func (t *tScreen) termioInit() error {
 
 failed:
 	if t.in != nil {
-		t.in.Close()
+		t.in.(*os.File).Close()
 	}
 	if t.out != nil {
-		t.out.Close()
+		t.out.(*os.File).Close()
 	}
 	return e
 }
@@ -100,16 +100,16 @@ func (t *tScreen) termioFini() {
 	<-t.indoneq
 
 	if t.out != nil && t.tiosp != nil {
-		unix.IoctlSetTermios(int(t.out.Fd()), unix.TCSETSF, t.tiosp.tio)
-		t.out.Close()
+		unix.IoctlSetTermios(int(t.out.(*os.File).Fd()), unix.TCSETSF, t.tiosp.tio)
+		t.out.(*os.File).Close()
 	}
 	if t.in != nil {
-		t.in.Close()
+		t.in.(*os.File).Close()
 	}
 }
 
 func (t *tScreen) getWinSize() (int, int, error) {
-	wsz, err := unix.IoctlGetWinsize(int(t.out.Fd()), unix.TIOCGWINSZ)
+	wsz, err := unix.IoctlGetWinsize(int(t.out.(*os.File).Fd()), unix.TIOCGWINSZ)
 	if err != nil {
 		return -1, -1, err
 	}
