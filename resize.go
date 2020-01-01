@@ -40,3 +40,7 @@ func (ev *EventResize) When() time.Time {
 func (ev *EventResize) Size() (int, int) {
 	return ev.w, ev.h
 }
+
+func (ev *EventResize) EscSeq() string {
+	return ""
+}

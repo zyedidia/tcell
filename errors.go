@@ -67,6 +67,10 @@ func (ev *EventError) Error() string {
 	return ev.err.Error()
 }
 
+func (ev *EventError) EscSeq() string {
+	return ev.err.Error()
+}
+
 // NewEventError creates an ErrorEvent with the given error payload.
 func NewEventError(err error) *EventError {
 	return &EventError{t: time.Now(), err: err}

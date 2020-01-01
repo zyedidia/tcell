@@ -23,6 +23,8 @@ import (
 type Event interface {
 	// When reports the time when the event was generated.
 	When() time.Time
+	// EscSeq returns the escape sequence that was parsed for this event
+	EscSeq() string
 }
 
 // EventTime is a simple base event class, suitable for easy reuse.

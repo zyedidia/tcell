@@ -93,6 +93,7 @@ type tScreen struct {
 	out       *os.File
 	buffering bool // true if we are collecting writes to buf instead of sending directly to out
 	buf       bytes.Buffer
+	escbuf    *bytes.Buffer
 	curstyle  Style
 	style     Style
 	evch      chan Event
@@ -908,7 +909,6 @@ func (t *tScreen) clip(x, y int) (int, int) {
 // state. Note that the screen's mouse button state is updated based on the
 // input to this function (i.e. it mutates the receiver).
 func (t *tScreen) buildMouseEvent(x, y, btn int) *EventMouse {
-
 	// XTerm mouse events only report at most one button at a time,
 	// which may include a wheel button.  Wheel motion events are
 	// reported as single impulses, while other button events are reported
@@ -963,7 +963,9 @@ func (t *tScreen) buildMouseEvent(x, y, btn int) *EventMouse {
 	// to the screen in that case.
 	x, y = t.clip(x, y)
 
-	return NewEventMouse(x, y, button, mod)
+	escseq := t.escbuf.String()
+	t.escbuf.Reset()
+	return NewEventMouse(x, y, button, mod, escseq)
 }
 
 // parseSgrMouse attempts to locate an SGR mouse record at the start of the
@@ -972,7 +974,6 @@ func (t *tScreen) buildMouseEvent(x, y, btn int) *EventMouse {
 // contain such an event, but more bytes are necessary (partial match), and
 // false, false if the content is definitely *not* an SGR mouse record.
 func (t *tScreen) parseSgrMouse(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
-
 	b := buf.Bytes()
 
 	var x, y, btn, state int
@@ -1076,7 +1077,8 @@ func (t *tScreen) parseSgrMouse(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 			}
 			// consume the event bytes
 			for i >= 0 {
-				buf.ReadByte()
+				by, _ := buf.ReadByte()
+				t.escbuf.WriteByte(by)
 				i--
 			}
 			*evs = append(*evs, t.buildMouseEvent(x, y, btn))
@@ -1129,7 +1131,8 @@ func (t *tScreen) parseXtermMouse(buf *bytes.Buffer, evs *[]Event) (bool, bool) 
 		case 5:
 			y = int(b[i]) - 32 - 1
 			for i >= 0 {
-				buf.ReadByte()
+				by, _ := buf.ReadByte()
+				t.escbuf.WriteByte(by)
 				i--
 			}
 			*evs = append(*evs, t.buildMouseEvent(x, y, btn))
@@ -1158,10 +1161,12 @@ func (t *tScreen) parseFunctionKey(buf *bytes.Buffer, evs *[]Event) (bool, bool)
 				mod |= ModAlt
 				t.escaped = false
 			}
-			*evs = append(*evs, NewEventKey(k.key, r, mod))
 			for i := 0; i < len(esc); i++ {
-				buf.ReadByte()
+				by, _ := buf.ReadByte()
+				t.escbuf.WriteByte(by)
 			}
+			*evs = append(*evs, NewEventKey(k.key, r, mod, t.escbuf.String()))
+			t.escbuf.Reset()
 			return true, true
 		}
 		if bytes.HasPrefix(esc, b) {
@@ -1180,8 +1185,10 @@ func (t *tScreen) parseRune(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 			mod = ModAlt
 			t.escaped = false
 		}
-		*evs = append(*evs, NewEventKey(KeyRune, rune(b[0]), mod))
-		buf.ReadByte()
+		by, _ := buf.ReadByte()
+		t.escbuf.WriteByte(by)
+		*evs = append(*evs, NewEventKey(KeyRune, rune(b[0]), mod, t.escbuf.String()))
+		t.escbuf.Reset()
 		return true, true
 	}
 
@@ -1205,10 +1212,12 @@ func (t *tScreen) parseRune(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 					mod = ModAlt
 					t.escaped = false
 				}
-				*evs = append(*evs, NewEventKey(KeyRune, r, mod))
+				*evs = append(*evs, NewEventKey(KeyRune, r, mod, t.escbuf.String()))
+				t.escbuf.Reset()
 			}
 			for nin > 0 {
-				buf.ReadByte()
+				by, _ := buf.ReadByte()
+				t.escbuf.WriteByte(by)
 				nin--
 			}
 			return true, true
@@ -1229,6 +1238,7 @@ func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer, evs *[]Event) (bool, bo
 			// The bracketed paste has ended
 			// Strip out the start and end sequences
 			*evs = append(*evs, NewEventPaste(str[6:len(b)-6]))
+			t.escbuf.Reset()
 			for i := 0; i < len(b); i++ {
 				buf.ReadByte()
 			}
@@ -1257,7 +1267,6 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 // while holding the screen's lock - the events can then be queued for
 // application processing with the lock released.
 func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event {
-
 	res := make([]Event, 0, 20)
 
 	t.Lock()
@@ -1310,12 +1319,14 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 		if partials == 0 || expire {
 			if b[0] == '\x1b' {
 				if len(b) == 1 {
-					res = append(res, NewEventKey(KeyEsc, 0, ModNone))
+					res = append(res, NewEventKey(KeyEsc, 0, ModNone, "\x1b"))
+					t.escbuf.Reset()
 					t.escaped = false
 				} else {
 					t.escaped = true
 				}
-				buf.ReadByte()
+				by, _ := buf.ReadByte()
+				t.escbuf.WriteByte(by)
 				continue
 			}
 			// Nothing was going to match, or we timed out
@@ -1323,12 +1334,14 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 			// to the app & let them sort it out.  Possibly we
 			// should only do this for control characters like ESC.
 			by, _ := buf.ReadByte()
+			t.escbuf.WriteByte(by)
 			mod := ModNone
 			if t.escaped {
 				t.escaped = false
 				mod = ModAlt
 			}
-			res = append(res, NewEventKey(KeyRune, rune(by), mod))
+			res = append(res, NewEventKey(KeyRune, rune(by), mod, t.escbuf.String()))
+			t.escbuf.Reset()
 			continue
 		}
 
@@ -1342,6 +1355,7 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 
 func (t *tScreen) mainLoop() {
 	buf := &bytes.Buffer{}
+	t.escbuf = &bytes.Buffer{}
 	for {
 		select {
 		case <-t.quit:
@@ -1394,7 +1408,6 @@ func (t *tScreen) mainLoop() {
 }
 
 func (t *tScreen) inputLoop() {
-
 	for {
 		chunk := make([]byte, 4096)
 		n, e := t.in.Read(chunk)

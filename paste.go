@@ -33,6 +33,10 @@ func (e *EventPaste) Text() string {
 	return e.text
 }
 
+func (e *EventPaste) EscSeq() string {
+	return pasteBegin + e.text + pasteEnd
+}
+
 // NewEventPaste creates a new paste event from the given text
 func NewEventPaste(text string) *EventPaste {
 	return &EventPaste{

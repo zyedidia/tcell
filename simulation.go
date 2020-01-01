@@ -365,12 +365,12 @@ func (s *simscreen) PostEvent(ev Event) error {
 }
 
 func (s *simscreen) InjectMouse(x, y int, buttons ButtonMask, mod ModMask) {
-	ev := NewEventMouse(x, y, buttons, mod)
+	ev := NewEventMouse(x, y, buttons, mod, "")
 	s.PostEvent(ev)
 }
 
 func (s *simscreen) InjectKey(key Key, r rune, mod ModMask) {
-	ev := NewEventKey(key, r, mod)
+	ev := NewEventKey(key, r, mod, "")
 	s.PostEvent(ev)
 }
 
@@ -381,7 +381,7 @@ outer:
 	for len(b) > 0 {
 		if b[0] >= ' ' && b[0] <= 0x7F {
 			// printable ASCII easy to deal with -- no encodings
-			ev := NewEventKey(KeyRune, rune(b[0]), ModNone)
+			ev := NewEventKey(KeyRune, rune(b[0]), ModNone, "")
 			s.PostEvent(ev)
 			b = b[1:]
 			continue
@@ -393,7 +393,7 @@ outer:
 			if Key(b[0]) >= KeyCtrlA && Key(b[0]) <= KeyCtrlZ {
 				mod = ModCtrl
 			}
-			ev := NewEventKey(Key(b[0]), 0, mod)
+			ev := NewEventKey(Key(b[0]), 0, mod, "")
 			s.PostEvent(ev)
 			continue
 		}
@@ -406,7 +406,7 @@ outer:
 			if nout != 0 {
 				r, _ := utf8.DecodeRune(utfb[:nout])
 				if r != utf8.RuneError {
-					ev := NewEventKey(KeyRune, r, ModNone)
+					ev := NewEventKey(KeyRune, r, ModNone, "")
 					s.PostEvent(ev)
 				}
 				b = b[nin:]
