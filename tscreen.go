@@ -1210,7 +1210,12 @@ func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 	evs := t.collectEventsFromInput(buf, expire)
 
 	for _, ev := range evs {
-		t.PostEventWait(ev)
+		switch ev.(type) {
+		case *EventMouse:
+			t.PostEvent(ev)
+		default:
+			t.PostEventWait(ev)
+		}
 	}
 }
 
