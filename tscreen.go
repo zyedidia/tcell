@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -29,6 +30,15 @@ import (
 
 	// import the stock terminals
 	_ "github.com/gdamore/tcell/terminfo/base"
+)
+
+// Magic strings for bracketed paste
+// See http://cirw.in/blog/bracketed-paste
+const (
+	enablePaste  = "\x1b[?2004h"
+	disablePaste = "\x1b[?2004l"
+	pasteBegin   = "\x1b[200~"
+	pasteEnd     = "\x1b[201~"
 )
 
 // NewTerminfoScreen returns a Screen that uses the stock TTY interface
@@ -167,6 +177,7 @@ func (t *tScreen) Init() error {
 	t.TPuts(ti.HideCursor)
 	t.TPuts(ti.EnableAcs)
 	t.TPuts(ti.Clear)
+	t.TPuts(enablePaste)
 
 	t.quit = make(chan struct{})
 
@@ -402,6 +413,7 @@ func (t *tScreen) Fini() {
 	t.TPuts(ti.ExitCA)
 	t.TPuts(ti.ExitKeypad)
 	t.TPuts(ti.TParm(ti.MouseMode, 0))
+	t.TPuts(disablePaste)
 	t.curstyle = Style(-1)
 	t.clear = false
 	t.fini = true
@@ -1206,6 +1218,28 @@ func (t *tScreen) parseRune(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 	return true, false
 }
 
+func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
+	b := buf.Bytes()
+
+	// Replace all carriage returns with newlines
+	str := string(bytes.Replace(b, []byte{'\r'}, []byte{'\n'}, -1))
+	if strings.HasPrefix(str, pasteBegin) {
+		// The bracketed paste has started
+		if strings.HasSuffix(str, pasteEnd) {
+			// The bracketed paste has ended
+			// Strip out the start and end sequences
+			*evs = append(*evs, NewEventPaste(str[6:len(b)-6]))
+			for i := 0; i < len(b); i++ {
+				buf.ReadByte()
+			}
+			return true, true
+		}
+		// There is still more coming
+		return true, false
+	}
+	return false, false
+}
+
 func (t *tScreen) scanInput(buf *bytes.Buffer, expire bool) {
 	evs := t.collectEventsFromInput(buf, expire)
 
@@ -1237,6 +1271,12 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 		}
 
 		partials := 0
+
+		if part, comp := t.parseBracketedPaste(buf, &res); comp {
+			continue
+		} else if part {
+			partials++
+		}
 
 		if part, comp := t.parseRune(buf, &res); comp {
 			continue
