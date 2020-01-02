@@ -950,7 +950,7 @@ func (t *tScreen) buildMouseEvent(x, y, btn int) *EventMouse {
 		if !t.wasbtn {
 			button = WheelDown
 		} else {
-			button = Button2
+			button = Button1
 		}
 	}
 
