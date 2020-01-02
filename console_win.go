@@ -266,7 +266,7 @@ func (s *cScreen) showCursor() {
 }
 
 func (s *cScreen) hideCursor() {
-	// s.setCursorInfo(&cursorInfo{size: 1, visible: 0})
+	s.setCursorInfo(&cursorInfo{size: 1, visible: 0})
 }
 
 func (s *cScreen) ShowCursor(x, y int) {
