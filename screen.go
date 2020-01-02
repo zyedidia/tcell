@@ -198,6 +198,12 @@ type Screen interface {
 	// be parsed by the screen
 	// Not defined for non-posix systems
 	RegisterRawSeq(string)
+
+	// SetPaste sets whether or not this screen should be expecting paste
+	// events. When paste is true, all key events with multiple bytes
+	// will be treated as pastes rather than as the user typing really
+	// fast. This is to enable a feature similar to Vim's "paste" option.
+	SetPaste(bool)
 }
 
 // NewScreen returns a default Screen suitable for the user's terminal

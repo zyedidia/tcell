@@ -35,8 +35,8 @@ import (
 // Magic strings for bracketed paste
 // See http://cirw.in/blog/bracketed-paste
 const (
-	enablePaste  = "\x1b[?2004h"
-	disablePaste = "\x1b[?2004l"
+	pasteEnable  = "\x1b[?2004h"
+	pasteDisable = "\x1b[?2004l"
 	pasteBegin   = "\x1b[200~"
 	pasteEnd     = "\x1b[201~"
 )
@@ -94,6 +94,7 @@ type tScreen struct {
 	buffering bool // true if we are collecting writes to buf instead of sending directly to out
 	buf       bytes.Buffer
 	escbuf    *bytes.Buffer
+	paste     bool
 	curstyle  Style
 	style     Style
 	evch      chan Event
@@ -180,7 +181,7 @@ func (t *tScreen) Init() error {
 	t.TPuts(ti.HideCursor)
 	t.TPuts(ti.EnableAcs)
 	t.TPuts(ti.Clear)
-	t.TPuts(enablePaste)
+	t.TPuts(pasteEnable)
 
 	t.quit = make(chan struct{})
 
@@ -198,6 +199,10 @@ func (t *tScreen) Init() error {
 	go t.inputLoop()
 
 	return nil
+}
+
+func (t *tScreen) SetPaste(p bool) {
+	t.paste = p
 }
 
 func (t *tScreen) RegisterRawSeq(r string) {
@@ -420,7 +425,7 @@ func (t *tScreen) Fini() {
 	t.TPuts(ti.ExitCA)
 	t.TPuts(ti.ExitKeypad)
 	t.TPuts(ti.TParm(ti.MouseMode, 0))
-	t.TPuts(disablePaste)
+	t.TPuts(pasteDisable)
 	t.curstyle = Style(-1)
 	t.clear = false
 	t.fini = true
@@ -1246,12 +1251,13 @@ func (t *tScreen) parsePaste(buf *bytes.Buffer, evs *[]Event) bool {
 		if esci != -1 {
 			b = b[:esci]
 		}
-		if len(b) > 8 {
+		if len(b) > 1 {
 			for i := 0; i < len(b); i++ {
 				by, _ := buf.ReadByte()
 				t.escbuf.WriteByte(by)
 			}
-			*evs = append(*evs, NewEventPaste(string(b), t.escbuf.String()))
+			str := string(bytes.Replace(b, []byte{'\r'}, []byte{'\n'}, -1))
+			*evs = append(*evs, NewEventPaste(str, t.escbuf.String()))
 			t.escbuf.Reset()
 			return true
 		}
@@ -1314,7 +1320,7 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 
 		partials := 0
 
-		if t.parsePaste(buf, &res) {
+		if t.paste && t.parsePaste(buf, &res) {
 			continue
 		}
 

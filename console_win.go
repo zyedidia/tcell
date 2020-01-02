@@ -1032,3 +1032,4 @@ func (s *cScreen) HasKey(k Key) bool {
 }
 
 func (s *cScreen) RegisterRawSeq(string) {}
+func (s *cScreen) SetPaste(bool)         {}
