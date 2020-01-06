@@ -24,6 +24,7 @@ package dynamic
 import (
 	"bytes"
 	"errors"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -419,6 +420,34 @@ func LoadTerminfo(name string) (*terminfo.Terminfo, string, error) {
 		r := regexp.MustCompile("%p1")
 		bg := r.ReplaceAllString(t.SetBg[2:], "%p2")
 		t.SetFgBg = fg + ";" + bg
+	}
+
+	addtruecolor := false
+	switch os.Getenv("COLORTERM") {
+	case "truecolor", "24bit", "24-bit":
+		addtruecolor = true
+	}
+	switch os.Getenv("TCELL_TRUECOLOR") {
+	case "":
+	case "disable":
+		addtruecolor = false
+	default:
+		addtruecolor = true
+	}
+
+	// If the user has requested 24-bit color with $COLORTERM, then
+	// amend the value (unless already present).  This means we don't
+	// need to have a value present.
+	if addtruecolor &&
+		t.SetFgBgRGB == "" &&
+		t.SetFgRGB == "" &&
+		t.SetBgRGB == "" {
+
+		// Supply vanilla ISO 8613-6:1994 24-bit color sequences.
+		t.SetFgRGB = "\x1b[38;2;%p1%d;%p2%d;%p3%dm"
+		t.SetBgRGB = "\x1b[48;2;%p1%d;%p2%d;%p3%dm"
+		t.SetFgBgRGB = "\x1b[38;2;%p1%d;%p2%d;%p3%d;" +
+			"48;2;%p4%d;%p5%d;%p6%dm"
 	}
 
 	return t, tc.desc, nil
