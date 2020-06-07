@@ -999,6 +999,10 @@ func (t *tScreen) parseSgrMouse(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 	i := 0
 	val := 0
 
+	if t.escaped {
+		state = 1
+	}
+
 	for i = range b {
 		switch b[i] {
 		case '\x1b':
@@ -1033,6 +1037,7 @@ func (t *tScreen) parseSgrMouse(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 				return false, false
 			}
 			if dig || neg {
+
 				return false, false
 			}
 			neg = true // stay in state
@@ -1117,6 +1122,10 @@ func (t *tScreen) parseXtermMouse(buf *bytes.Buffer, evs *[]Event) (bool, bool) 
 	x := 0
 	y := 0
 
+	if t.escaped {
+		state = 1
+	}
+
 	for i := range b {
 		switch state {
 		case 0:
@@ -1192,12 +1201,18 @@ func (t *tScreen) parseFunctionKey(buf *bytes.Buffer, evs *[]Event) (bool, bool)
 	return partial, false
 }
 
-func (t *tScreen) parseRune(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
+func (t *tScreen) parseRune(buf *bytes.Buffer, evs *[]Event, expire bool) (bool, bool) {
 	b := buf.Bytes()
 	if b[0] >= ' ' && b[0] <= 0x7F {
 		// printable ASCII easy to deal with -- no encodings
 		mod := ModNone
 		if t.escaped {
+
+			if !expire && b[0] == '[' {
+				// could be an escape sequence
+				return true, false
+			}
+
 			mod = ModAlt
 			t.escaped = false
 		}
@@ -1335,7 +1350,7 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 			partials++
 		}
 
-		if part, comp := t.parseRune(buf, &res); comp {
+		if part, comp := t.parseRune(buf, &res, expire); comp {
 			continue
 		} else if part {
 			partials++
@@ -1462,8 +1477,8 @@ func (t *tScreen) mainLoop() {
 }
 
 func (t *tScreen) inputLoop() {
-	chunk := make([]byte, 4096)
 	for {
+		chunk := make([]byte, 4096)
 		n, e := t.in.Read(chunk)
 		switch e {
 		case io.EOF:
