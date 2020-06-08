@@ -1201,18 +1201,12 @@ func (t *tScreen) parseFunctionKey(buf *bytes.Buffer, evs *[]Event) (bool, bool)
 	return partial, false
 }
 
-func (t *tScreen) parseRune(buf *bytes.Buffer, evs *[]Event, expire bool) (bool, bool) {
+func (t *tScreen) parseRune(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 	b := buf.Bytes()
 	if b[0] >= ' ' && b[0] <= 0x7F {
 		// printable ASCII easy to deal with -- no encodings
 		mod := ModNone
 		if t.escaped {
-
-			if !expire && b[0] == '[' {
-				// could be an escape sequence
-				return true, false
-			}
-
 			mod = ModAlt
 			t.escaped = false
 		}
@@ -1350,7 +1344,7 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 			partials++
 		}
 
-		if part, comp := t.parseRune(buf, &res, expire); comp {
+		if part, comp := t.parseRune(buf, &res); comp {
 			continue
 		} else if part {
 			partials++
