@@ -390,11 +390,11 @@ func LoadTerminfo(name string) (*terminfo.Terminfo, string, error) {
 	if t.Mouse != "" && t.MouseMode == "" {
 		// we anticipate that all xterm mouse tracking compatible
 		// terminals understand mouse tracking (1000), but we hope
-		// that those that don't understand any-event tracking (1003)
+		// that those that don't understand button-event tracking (1002)
 		// will at least ignore it.  Likewise we hope that terminals
 		// that don't understand SGR reporting (1006) just ignore it.
 		t.MouseMode = "%?%p1%{1}%=%t%'h'%Pa%e%'l'%Pa%;" +
-			"\x1b[?1000%ga%c\x1b[?1002%ga%c\x1b[?1003%ga%c\x1b[?1006%ga%c"
+			"\x1b[?1000%ga%c\x1b[?1002%ga%c\x1b[?1006%ga%c"
 	}
 
 	// We only support colors in ANSI 8 or 256 color mode.
