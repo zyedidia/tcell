@@ -49,6 +49,9 @@ type SimulationScreen interface {
 	// InjectMouse injects a mouse event.
 	InjectMouse(x, y int, buttons ButtonMask, mod ModMask)
 
+	// InjectResize injects a resize event
+	InjectResize()
+
 	// SetSize resizes the underlying physical screen.  It also causes
 	// a resize event to be injected during the next Show() or Sync().
 	// A new physical contents array will be allocated (with data from
@@ -419,6 +422,12 @@ outer:
 	}
 
 	return !failed
+}
+
+func (s *simscreen) InjectResize() {
+	w, h := s.physw, s.physh
+	ev := NewEventResize(w, h)
+	s.PostEvent(ev)
 }
 
 func (s *simscreen) Sync() {
