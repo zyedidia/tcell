@@ -518,3 +518,6 @@ func (s *simscreen) HasKey(Key) bool {
 
 func (s *simscreen) RegisterRawSeq(string) {}
 func (s *simscreen) SetPaste(bool)         {}
+
+func (s *simscreen) GetClipboard(string) error         { return nil }
+func (s *simscreen) SetClipboard(string, string) error { return nil }

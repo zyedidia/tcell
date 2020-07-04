@@ -204,6 +204,15 @@ type Screen interface {
 	// will be treated as pastes rather than as the user typing really
 	// fast. This is to enable a feature similar to Vim's "paste" option.
 	SetPaste(bool)
+
+	// GetClipboard sends an OSC 52 escape sequence to the tty requesting
+	// that the clipboard contents be sent in base64 encoding.
+	GetClipboard(string) error
+
+	// SetClipboard sends an OSC 52 escape sequence to the tty with a base64
+	// encoded string requesting that the string be decoded and placed into
+	// the system clipboard.
+	SetClipboard(string, string) error
 }
 
 // NewScreen returns a default Screen suitable for the user's terminal

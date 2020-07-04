@@ -16,6 +16,9 @@ package tcell
 
 import (
 	"bytes"
+	"encoding/base64"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -39,6 +42,13 @@ const (
 	pasteDisable = "\x1b[?2004l"
 	pasteBegin   = "\x1b[200~"
 	pasteEnd     = "\x1b[201~"
+
+	pasteSet   = "\x1b]52;%c;%s\a"
+	pasteGet   = "\x1b]52;%c;?\a"
+	pasteClear = "\x1b]52;%c!\a"
+
+	pasteOSC52Begin = "\x1b]52;"
+	pasteOSC52End   = "\x1b\\"
 )
 
 // NewTerminfoScreen returns a Screen that uses the stock TTY interface
@@ -1279,6 +1289,40 @@ func (t *tScreen) parsePaste(buf *bytes.Buffer, evs *[]Event) bool {
 	return false
 }
 
+func (t *tScreen) parseOSC52Paste(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
+	b := buf.Bytes()
+
+	prefixLen := len(pasteOSC52Begin) + 2
+	suffixLen := len(pasteOSC52End)
+	if bytes.HasPrefix(b, []byte(pasteOSC52Begin)) && len(b) > len(pasteOSC52Begin)+2 {
+		// OSC52 paste has started
+		if bytes.HasSuffix(b, []byte(pasteOSC52End)) {
+			// OSC52 paste has ended
+			payload := b[prefixLen : len(b)-suffixLen]
+			data := make([]byte, len(payload))
+			n, err := base64.StdEncoding.Decode(data, payload)
+			data = data[:n]
+
+			t.escbuf.Write(b)
+
+			buf.Reset()
+
+			if err != nil {
+				// error must be something else...?
+				return false, false
+			}
+
+			*evs = append(*evs, NewEventPaste(string(data), t.escbuf.String()))
+			t.escbuf.Reset()
+			return true, true
+		}
+		// More still coming
+		return true, false
+	}
+
+	return false, false
+}
+
 func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 	b := buf.Bytes()
 
@@ -1336,6 +1380,12 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 
 		if t.paste && t.parsePaste(buf, &res) {
 			continue
+		}
+
+		if part, comp := t.parseOSC52Paste(buf, &res); comp {
+			continue
+		} else if part {
+			partials++
 		}
 
 		if part, comp := t.parseBracketedPaste(buf, &res); comp {
@@ -1553,3 +1603,45 @@ func (t *tScreen) HasKey(k Key) bool {
 }
 
 func (t *tScreen) Resize(int, int, int, int) {}
+
+func (t *tScreen) GetClipboard(register string) error {
+	if len(register) <= 0 {
+		return errors.New("No register provided")
+	}
+
+	r := register[0]
+
+	if r != 'c' && r != 'p' {
+		return errors.New("Invalid register")
+	}
+
+	t.TPuts(fmt.Sprintf(pasteGet, r))
+
+	return nil
+}
+
+func (t *tScreen) SetClipboard(text, register string) error {
+	if len(register) <= 0 {
+		return errors.New("No register provided")
+	}
+
+	r := register[0]
+
+	if r != 'c' && r != 'p' {
+		return errors.New("Invalid register")
+	}
+
+	t.TPuts(fmt.Sprintf(pasteClear, r))
+
+	var err error = nil
+	// Maximum paste length for OSC 52
+	if len(text) >= 74994 {
+		err = errors.New("Text truncated: exceeds 74994 bytes")
+	}
+
+	str := base64.StdEncoding.EncodeToString([]byte(text))
+
+	t.TPuts(fmt.Sprintf(pasteSet, r, str))
+
+	return err
+}

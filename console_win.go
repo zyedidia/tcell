@@ -1033,3 +1033,11 @@ func (s *cScreen) HasKey(k Key) bool {
 
 func (s *cScreen) RegisterRawSeq(string) {}
 func (s *cScreen) SetPaste(bool)         {}
+
+func (s *cScreen) GetClipboard(string) error {
+	return errors.New("Not supported on Windows")
+}
+
+func (s *cScreen) SetClipboard(string, string) error {
+	return errors.New("Not supported on Windows")
+}
