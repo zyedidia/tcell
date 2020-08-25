@@ -1164,6 +1164,8 @@ func (s *cScreen) GetClipboard(string) error {
 
 func (s *cScreen) SetClipboard(string, string) error {
 	return errors.New("Not supported on Windows")
+}
+
 func (s *cScreen) Beep() error {
 	// A simple beep. If the sound card is not available, the sound is generated
 	// using the speaker.
