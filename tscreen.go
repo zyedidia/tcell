@@ -29,10 +29,10 @@ import (
 
 	"golang.org/x/text/transform"
 
-	"github.com/zyedidia/tcell/terminfo"
+	"github.com/zyedidia/tcell/v2/terminfo"
 
 	// import the stock terminals
-	_ "github.com/zyedidia/tcell/terminfo/base"
+	_ "github.com/zyedidia/tcell/v2/terminfo/base"
 )
 
 // Magic strings for bracketed paste
@@ -135,6 +135,7 @@ type tScreen struct {
 	escaped   bool
 	buttondn  bool
 	rawseq    []string
+	finiOnce  sync.Once
 
 	sync.Mutex
 }
@@ -177,14 +178,12 @@ func (t *tScreen) Init() error {
 	if os.Getenv("TCELL_TRUECOLOR") == "disable" {
 		t.truecolor = false
 	}
-	if !t.truecolor {
-		t.colors = make(map[Color]Color)
-		t.palette = make([]Color, t.Colors())
-		for i := 0; i < t.Colors(); i++ {
-			t.palette[i] = Color(i)
-			// identity map for our builtin colors
-			t.colors[Color(i)] = Color(i)
-		}
+	t.colors = make(map[Color]Color)
+	t.palette = make([]Color, t.nColors())
+	for i := 0; i < t.nColors(); i++ {
+		t.palette[i] = Color(i) | ColorValid
+		// identity map for our builtin colors
+		t.colors[Color(i)|ColorValid] = Color(i) | ColorValid
 	}
 
 	t.TPuts(ti.EnterCA)
@@ -221,12 +220,95 @@ func (t *tScreen) RegisterRawSeq(r string) {
 
 func (t *tScreen) prepareKeyMod(key Key, mod ModMask, val string) {
 	if val != "" {
-		// Do not overrride codes that already exist
+		// Do not override codes that already exist
 		if _, exist := t.keycodes[val]; !exist {
 			t.keyexist[key] = true
 			t.keycodes[val] = &tKeyCode{key: key, mod: mod}
 		}
 	}
+}
+
+func (t *tScreen) prepareKeyModReplace(key Key, replace Key, mod ModMask, val string) {
+	if val != "" {
+		// Do not override codes that already exist
+		if old, exist := t.keycodes[val]; !exist || old.key == replace {
+			t.keyexist[key] = true
+			t.keycodes[val] = &tKeyCode{key: key, mod: mod}
+		}
+	}
+}
+
+func (t *tScreen) prepareKeyModXTerm(key Key, val string) {
+
+	if strings.HasPrefix(val, "\x1b[") && strings.HasSuffix(val, "~") {
+
+		// Drop the trailing ~
+		val = val[:len(val)-1]
+
+		// These suffixes are calculated assuming Xterm style modifier suffixes.
+		// Please see https://invisible-island.net/xterm/ctlseqs/ctlseqs.pdf for
+		// more information (specifically "PC-Style Function Keys").
+		t.prepareKeyModReplace(key, key+12, ModShift, val+";2~")
+		t.prepareKeyModReplace(key, key+48, ModAlt, val+";3~")
+		t.prepareKeyModReplace(key, key+60, ModAlt|ModShift, val+";4~")
+		t.prepareKeyModReplace(key, key+24, ModCtrl, val+";5~")
+		t.prepareKeyModReplace(key, key+36, ModCtrl|ModShift, val+";6~")
+		t.prepareKeyMod(key, ModAlt|ModCtrl, val+";7~")
+		t.prepareKeyMod(key, ModShift|ModAlt|ModCtrl, val+";8~")
+		t.prepareKeyMod(key, ModMeta, val+";9~")
+		t.prepareKeyMod(key, ModMeta|ModShift, val+";10~")
+		t.prepareKeyMod(key, ModMeta|ModAlt, val+";11~")
+		t.prepareKeyMod(key, ModMeta|ModAlt|ModShift, val+";12~")
+		t.prepareKeyMod(key, ModMeta|ModCtrl, val+";13~")
+		t.prepareKeyMod(key, ModMeta|ModCtrl|ModShift, val+";14~")
+		t.prepareKeyMod(key, ModMeta|ModCtrl|ModAlt, val+";15~")
+		t.prepareKeyMod(key, ModMeta|ModCtrl|ModAlt|ModShift, val+";16~")
+	} else if strings.HasPrefix(val, "\x1bO") && len(val) == 3 {
+		val = val[2:]
+		t.prepareKeyModReplace(key, key+12, ModShift, "\x1b[1;2"+val)
+		t.prepareKeyModReplace(key, key+48, ModAlt, "\x1b[1;3"+val)
+		t.prepareKeyModReplace(key, key+24, ModCtrl, "\x1b[1;5"+val)
+		t.prepareKeyModReplace(key, key+36, ModCtrl|ModShift, "\x1b[1;6"+val)
+		t.prepareKeyModReplace(key, key+60, ModAlt|ModShift, "\x1b[1;4"+val)
+		t.prepareKeyMod(key, ModAlt|ModCtrl, "\x1b[1;7"+val)
+		t.prepareKeyMod(key, ModShift|ModAlt|ModCtrl, "\x1b[1;8"+val)
+		t.prepareKeyMod(key, ModMeta, "\x1b[1;9"+val)
+		t.prepareKeyMod(key, ModMeta|ModShift, "\x1b[1;10"+val)
+		t.prepareKeyMod(key, ModMeta|ModAlt, "\x1b[1;11"+val)
+		t.prepareKeyMod(key, ModMeta|ModAlt|ModShift, "\x1b[1;12"+val)
+		t.prepareKeyMod(key, ModMeta|ModCtrl, "\x1b[1;13"+val)
+		t.prepareKeyMod(key, ModMeta|ModCtrl|ModShift, "\x1b[1;14"+val)
+		t.prepareKeyMod(key, ModMeta|ModCtrl|ModAlt, "\x1b[1;15"+val)
+		t.prepareKeyMod(key, ModMeta|ModCtrl|ModAlt|ModShift, "\x1b[1;16"+val)
+	}
+}
+
+func (t *tScreen) prepareXtermModifiers() {
+	if t.ti.Modifiers != terminfo.ModifiersXTerm {
+		return
+	}
+	t.prepareKeyModXTerm(KeyRight, t.ti.KeyRight)
+	t.prepareKeyModXTerm(KeyLeft, t.ti.KeyLeft)
+	t.prepareKeyModXTerm(KeyUp, t.ti.KeyUp)
+	t.prepareKeyModXTerm(KeyDown, t.ti.KeyDown)
+	t.prepareKeyModXTerm(KeyInsert, t.ti.KeyInsert)
+	t.prepareKeyModXTerm(KeyDelete, t.ti.KeyDelete)
+	t.prepareKeyModXTerm(KeyPgUp, t.ti.KeyPgUp)
+	t.prepareKeyModXTerm(KeyPgDn, t.ti.KeyPgDn)
+	t.prepareKeyModXTerm(KeyHome, t.ti.KeyHome)
+	t.prepareKeyModXTerm(KeyEnd, t.ti.KeyEnd)
+	t.prepareKeyModXTerm(KeyF1, t.ti.KeyF1)
+	t.prepareKeyModXTerm(KeyF2, t.ti.KeyF2)
+	t.prepareKeyModXTerm(KeyF3, t.ti.KeyF3)
+	t.prepareKeyModXTerm(KeyF4, t.ti.KeyF4)
+	t.prepareKeyModXTerm(KeyF5, t.ti.KeyF5)
+	t.prepareKeyModXTerm(KeyF6, t.ti.KeyF6)
+	t.prepareKeyModXTerm(KeyF7, t.ti.KeyF7)
+	t.prepareKeyModXTerm(KeyF8, t.ti.KeyF8)
+	t.prepareKeyModXTerm(KeyF9, t.ti.KeyF9)
+	t.prepareKeyModXTerm(KeyF10, t.ti.KeyF10)
+	t.prepareKeyModXTerm(KeyF11, t.ti.KeyF11)
+	t.prepareKeyModXTerm(KeyF12, t.ti.KeyF12)
 }
 
 func (t *tScreen) prepareKey(key Key, val string) {
@@ -332,41 +414,6 @@ func (t *tScreen) prepareKeys() {
 	t.prepareKeyMod(KeyHome, ModCtrl, ti.KeyCtrlHome)
 	t.prepareKeyMod(KeyEnd, ModCtrl, ti.KeyCtrlEnd)
 
-	t.prepareKeyMod(KeyRight, ModAlt, ti.KeyAltRight)
-	t.prepareKeyMod(KeyLeft, ModAlt, ti.KeyAltLeft)
-	t.prepareKeyMod(KeyUp, ModAlt, ti.KeyAltUp)
-	t.prepareKeyMod(KeyDown, ModAlt, ti.KeyAltDown)
-	t.prepareKeyMod(KeyHome, ModAlt, ti.KeyAltHome)
-	t.prepareKeyMod(KeyEnd, ModAlt, ti.KeyAltEnd)
-
-	t.prepareKeyMod(KeyRight, ModAlt, ti.KeyMetaRight)
-	t.prepareKeyMod(KeyLeft, ModAlt, ti.KeyMetaLeft)
-	t.prepareKeyMod(KeyUp, ModAlt, ti.KeyMetaUp)
-	t.prepareKeyMod(KeyDown, ModAlt, ti.KeyMetaDown)
-	t.prepareKeyMod(KeyHome, ModAlt, ti.KeyMetaHome)
-	t.prepareKeyMod(KeyEnd, ModAlt, ti.KeyMetaEnd)
-
-	t.prepareKeyMod(KeyRight, ModAlt|ModShift, ti.KeyAltShfRight)
-	t.prepareKeyMod(KeyLeft, ModAlt|ModShift, ti.KeyAltShfLeft)
-	t.prepareKeyMod(KeyUp, ModAlt|ModShift, ti.KeyAltShfUp)
-	t.prepareKeyMod(KeyDown, ModAlt|ModShift, ti.KeyAltShfDown)
-	t.prepareKeyMod(KeyHome, ModAlt|ModShift, ti.KeyAltShfHome)
-	t.prepareKeyMod(KeyEnd, ModAlt|ModShift, ti.KeyAltShfEnd)
-
-	t.prepareKeyMod(KeyRight, ModAlt|ModShift, ti.KeyMetaShfRight)
-	t.prepareKeyMod(KeyLeft, ModAlt|ModShift, ti.KeyMetaShfLeft)
-	t.prepareKeyMod(KeyUp, ModAlt|ModShift, ti.KeyMetaShfUp)
-	t.prepareKeyMod(KeyDown, ModAlt|ModShift, ti.KeyMetaShfDown)
-	t.prepareKeyMod(KeyHome, ModAlt|ModShift, ti.KeyMetaShfHome)
-	t.prepareKeyMod(KeyEnd, ModAlt|ModShift, ti.KeyMetaShfEnd)
-
-	t.prepareKeyMod(KeyRight, ModCtrl|ModShift, ti.KeyCtrlShfRight)
-	t.prepareKeyMod(KeyLeft, ModCtrl|ModShift, ti.KeyCtrlShfLeft)
-	t.prepareKeyMod(KeyUp, ModCtrl|ModShift, ti.KeyCtrlShfUp)
-	t.prepareKeyMod(KeyDown, ModCtrl|ModShift, ti.KeyCtrlShfDown)
-	t.prepareKeyMod(KeyHome, ModCtrl|ModShift, ti.KeyCtrlShfHome)
-	t.prepareKeyMod(KeyEnd, ModCtrl|ModShift, ti.KeyCtrlShfEnd)
-
 	// Sadly, xterm handling of keycodes is somewhat erratic.  In
 	// particular, different codes are sent depending on application
 	// mode is in use or not, and the entries for many of these are
@@ -399,6 +446,8 @@ func (t *tScreen) prepareKeys() {
 		t.prepareKey(KeyHome, "\x1bOH")
 	}
 
+	t.prepareXtermModifiers()
+
 outer:
 	// Add key mappings for control keys.
 	for i := 0; i < ' '; i++ {
@@ -426,6 +475,10 @@ outer:
 }
 
 func (t *tScreen) Fini() {
+	t.finiOnce.Do(t.finish)
+}
+
+func (t *tScreen) finish() {
 	t.Lock()
 	defer t.Unlock()
 
@@ -438,7 +491,7 @@ func (t *tScreen) Fini() {
 	t.TPuts(ti.ExitKeypad)
 	t.TPuts(ti.TParm(ti.MouseMode, 0))
 	t.TPuts(pasteDisable)
-	t.curstyle = Style(-1)
+	t.curstyle = styleInvalid
 	t.clear = false
 	t.fini = true
 
@@ -531,30 +584,34 @@ func (t *tScreen) sendFgBg(fg Color, bg Color) {
 	if ti.Colors == 0 {
 		return
 	}
+	if fg == ColorReset || bg == ColorReset {
+		t.TPuts(ti.ResetFgBg)
+	}
 	if t.truecolor {
-		if ti.SetFgBgRGB != "" &&
-			fg != ColorDefault && bg != ColorDefault {
+		if ti.SetFgBgRGB != "" && fg.IsRGB() && bg.IsRGB() {
 			r1, g1, b1 := fg.RGB()
 			r2, g2, b2 := bg.RGB()
 			t.TPuts(ti.TParm(ti.SetFgBgRGB,
 				int(r1), int(g1), int(b1),
 				int(r2), int(g2), int(b2)))
-		} else {
-			if fg != ColorDefault && ti.SetFgRGB != "" {
-				r, g, b := fg.RGB()
-				t.TPuts(ti.TParm(ti.SetFgRGB,
-					int(r), int(g), int(b)))
-			}
-			if bg != ColorDefault && ti.SetBgRGB != "" {
-				r, g, b := bg.RGB()
-				t.TPuts(ti.TParm(ti.SetBgRGB,
-					int(r), int(g), int(b)))
-			}
+			return
 		}
-		return
+
+		if fg.IsRGB() && ti.SetFgRGB != "" {
+			r, g, b := fg.RGB()
+			t.TPuts(ti.TParm(ti.SetFgRGB, int(r), int(g), int(b)))
+			fg = ColorDefault
+		}
+
+		if bg.IsRGB() && ti.SetBgRGB != "" {
+			r, g, b := bg.RGB()
+			t.TPuts(ti.TParm(ti.SetBgRGB,
+				int(r), int(g), int(b)))
+			bg = ColorDefault
+		}
 	}
 
-	if fg != ColorDefault {
+	if fg.Valid() {
 		if v, ok := t.colors[fg]; ok {
 			fg = v
 		} else {
@@ -564,7 +621,7 @@ func (t *tScreen) sendFgBg(fg Color, bg Color) {
 		}
 	}
 
-	if bg != ColorDefault {
+	if bg.Valid() {
 		if v, ok := t.colors[bg]; ok {
 			bg = v
 		} else {
@@ -574,14 +631,14 @@ func (t *tScreen) sendFgBg(fg Color, bg Color) {
 		}
 	}
 
-	if ti.SetFgBg != "" && fg != ColorDefault && bg != ColorDefault {
-		t.TPuts(ti.TParm(ti.SetFgBg, int(fg), int(bg)))
+	if fg.Valid() && bg.Valid() && ti.SetFgBg != "" {
+		t.TPuts(ti.TParm(ti.SetFgBg, int(fg&0xff), int(bg&0xff)))
 	} else {
-		if fg != ColorDefault && ti.SetFg != "" {
-			t.TPuts(ti.TParm(ti.SetFg, int(fg)))
+		if fg.Valid() && ti.SetFg != "" {
+			t.TPuts(ti.TParm(ti.SetFg, int(fg&0xff)))
 		}
-		if bg != ColorDefault && ti.SetBg != "" {
-			t.TPuts(ti.TParm(ti.SetBg, int(bg)))
+		if bg.Valid() && ti.SetBg != "" {
+			t.TPuts(ti.TParm(ti.SetBg, int(bg&0xff)))
 		}
 	}
 }
@@ -627,6 +684,9 @@ func (t *tScreen) drawCell(x, y int) int {
 		}
 		if attrs&AttrItalic != 0 {
 			t.TPuts(ti.Italic)
+		}
+		if attrs&AttrStrikeThrough != 0 {
+			t.TPuts(ti.StrikeThrough)
 		}
 		t.curstyle = style
 	}
@@ -828,6 +888,13 @@ func (t *tScreen) Colors() int {
 	return t.ti.Colors
 }
 
+// nColors returns the size of the built-in palette.
+// This is distinct from Colors(), as it will generally
+// always be a small number. (<= 256)
+func (t *tScreen) nColors() int {
+	return t.ti.Colors
+}
+
 func (t *tScreen) PollEvent() Event {
 	select {
 	case <-t.quit:
@@ -952,10 +1019,10 @@ func (t *tScreen) buildMouseEvent(x, y, btn int) *EventMouse {
 		button = Button1
 		t.wasbtn = true
 	case 1:
-		button = Button2
+		button = Button3 // Note we prefer to treat right as button 2
 		t.wasbtn = true
 	case 2:
-		button = Button3
+		button = Button2 // And the middle button as button 3
 		t.wasbtn = true
 	case 3:
 		button = ButtonNone

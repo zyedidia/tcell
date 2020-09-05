@@ -19,9 +19,9 @@ package tcell
 import (
 	"errors"
 
-	"github.com/zyedidia/tcell/terminfo"
+	"github.com/zyedidia/tcell/v2/terminfo"
 )
 
-func loadDynamicTerminfo(term string) (*terminfo.Terminfo, error) {
+func loadDynamicTerminfo(_ string) (*terminfo.Terminfo, error) {
 	return nil, errors.New("terminal type unsupported")
 }

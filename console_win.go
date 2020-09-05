@@ -1,6 +1,6 @@
 // +build windows
 
-// Copyright 2019 The TCell Authors
+// Copyright 2020 The TCell Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -50,6 +50,8 @@ type cScreen struct {
 	oimode  uint32
 	oomode  uint32
 	cells   CellBuffer
+
+	finiOnce sync.Once
 
 	sync.Mutex
 }
@@ -139,8 +141,10 @@ const (
 	vtUnderline  = "\x1b[4m"
 	vtBlink      = "\x1b[5m" // Not sure this is processed
 	vtReverse    = "\x1b[7m"
-	vtSetFg      = "\x1b[38;2;%d;%d;%dm" // RGB
-	vtSetBg      = "\x1b[48;2;%d;%d;%dm" // RGB
+	vtSetFg      = "\x1b[38;5;%dm"
+	vtSetBg      = "\x1b[48;5;%dm"
+	vtSetFgRGB   = "\x1b[38;2;%d;%d;%dm" // RGB
+	vtSetBgRGB   = "\x1b[48;2;%d;%d;%dm" // RGB
 )
 
 // NewConsoleScreen returns a Screen for the Windows console associated
@@ -246,6 +250,10 @@ func (s *cScreen) DisableMouse() {
 }
 
 func (s *cScreen) Fini() {
+	s.finiOnce.Do(s.finish)
+}
+
+func (s *cScreen) finish() {
 	s.Lock()
 	s.style = StyleDefault
 	s.curx = -1
@@ -630,10 +638,10 @@ func (s *cScreen) getConsoleInput() error {
 				for krec.repeat > 0 {
 					// convert shift+tab to backtab
 					if mod2mask(krec.mod) == ModShift && krec.ch == vkTab {
-						s.PostEvent(NewEventKey(KeyBacktab, 0,
+						s.PostEventWait(NewEventKey(KeyBacktab, 0,
 							ModNone, ""))
 					} else {
-						s.PostEvent(NewEventKey(KeyRune, rune(krec.ch),
+						s.PostEventWait(NewEventKey(KeyRune, rune(krec.ch),
 							mod2mask(krec.mod), ""))
 					}
 					krec.repeat--
@@ -646,7 +654,7 @@ func (s *cScreen) getConsoleInput() error {
 				return nil
 			}
 			for krec.repeat > 0 {
-				s.PostEvent(NewEventKey(key, rune(krec.ch),
+				s.PostEventWait(NewEventKey(key, rune(krec.ch),
 					mod2mask(krec.mod), ""))
 				krec.repeat--
 			}
@@ -660,14 +668,14 @@ func (s *cScreen) getConsoleInput() error {
 			mrec.flags = getu32(rec.data[12:])
 			btns := mrec2btns(mrec.btns, mrec.flags)
 			// we ignore double click, events are delivered normally
-			s.PostEvent(NewEventMouse(int(mrec.x), int(mrec.y), btns,
+			s.PostEventWait(NewEventMouse(int(mrec.x), int(mrec.y), btns,
 				mod2mask(mrec.mod), ""))
 
 		case resizeEvent:
 			var rrec resizeRecord
 			rrec.x = geti16(rec.data[0:])
 			rrec.y = geti16(rec.data[2:])
-			s.PostEvent(NewEventResize(int(rrec.x), int(rrec.y)))
+			s.PostEventWait(NewEventResize(int(rrec.x), int(rrec.y)))
 
 		default:
 		}
@@ -737,10 +745,10 @@ func (s *cScreen) mapStyle(style Style) uint16 {
 	f, b, a := style.Decompose()
 	fa := s.oscreen.attrs & 0xf
 	ba := (s.oscreen.attrs) >> 4 & 0xf
-	if f != ColorDefault {
+	if f != ColorDefault && f != ColorReset {
 		fa = mapColor2RGB(f)
 	}
-	if b != ColorDefault {
+	if b != ColorDefault && b != ColorReset {
 		ba = mapColor2RGB(b)
 	}
 	var attr uint16
@@ -810,13 +818,17 @@ func (s *cScreen) sendVtStyle(style Style) {
 	if attrs&AttrReverse != 0 {
 		esc.WriteString(vtReverse)
 	}
-	if fg != ColorDefault {
+	if fg.IsRGB() {
 		r, g, b := fg.RGB()
-		fmt.Fprintf(esc, vtSetFg, r, g, b)
+		fmt.Fprintf(esc, vtSetFgRGB, r, g, b)
+	} else if fg.Valid() {
+		fmt.Fprintf(esc, vtSetFg, fg&0xff)
 	}
-	if bg != ColorDefault {
+	if bg.IsRGB() {
 		r, g, b := bg.RGB()
-		fmt.Fprintf(esc, vtSetBg, r, g, b)
+		fmt.Fprintf(esc, vtSetBgRGB, r, g, b)
+	} else if bg.Valid() {
+		fmt.Fprintf(esc, vtSetBg, bg&0xff)
 	}
 	s.emitVtString(esc.String())
 }
@@ -848,13 +860,13 @@ func (s *cScreen) draw() {
 	}
 	buf := make([]uint16, 0, s.w)
 	wcs := buf[:]
-	lstyle := Style(-1) // invalid attribute
+	lstyle := styleInvalid
 
 	lx, ly := -1, -1
 	ra := make([]rune, 1)
 
-	for y := 0; y < int(s.h); y++ {
-		for x := 0; x < int(s.w); x++ {
+	for y := 0; y < s.h; y++ {
+		for x := 0; x < s.w; x++ {
 			mainc, combc, style, width := s.cells.GetContent(x, y)
 			dirty := s.cells.Dirty(x, y)
 			if style == StyleDefault {
@@ -867,7 +879,7 @@ func (s *cScreen) draw() {
 				// cells, or because we need to change styles
 				s.writeString(lx, ly, lstyle, wcs)
 				wcs = buf[0:0]
-				lstyle = Style(-1)
+				lstyle = StyleDefault
 				if !dirty {
 					continue
 				}
@@ -894,7 +906,7 @@ func (s *cScreen) draw() {
 		}
 		s.writeString(lx, ly, lstyle, wcs)
 		wcs = buf[0:0]
-		lstyle = Style(-1)
+		lstyle = styleInvalid
 	}
 }
 

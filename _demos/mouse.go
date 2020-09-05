@@ -1,4 +1,4 @@
-//+build ignore
+// +build ignore
 
 // Copyright 2015 The TCell Authors
 //
@@ -23,8 +23,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/zyedidia/tcell"
-	"github.com/zyedidia/tcell/encoding"
+	"github.com/zyedidia/tcell/v2"
+	"github.com/zyedidia/tcell/v2/encoding"
 
 	"github.com/mattn/go-runewidth"
 )
@@ -112,8 +112,8 @@ func main() {
 		os.Exit(1)
 	}
 	defStyle = tcell.StyleDefault.
-		Background(tcell.ColorBlack).
-		Foreground(tcell.ColorWhite)
+		Background(tcell.ColorReset).
+		Foreground(tcell.ColorReset)
 	s.SetStyle(defStyle)
 	s.EnableMouse()
 	s.Clear()
@@ -206,7 +206,7 @@ func main() {
 			switch ev.Buttons() {
 			case tcell.ButtonNone:
 				if ox >= 0 {
-					bg := tcell.Color((lchar - '0') * 2)
+					bg := tcell.Color((lchar-'0')*2) | tcell.ColorValid
 					drawBox(s, ox, oy, x, y,
 						up.Background(bg),
 						lchar)

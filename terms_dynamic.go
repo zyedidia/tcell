@@ -24,8 +24,8 @@ import (
 	// also don't support Android here, because you really don't want
 	// to run external programs there.  Generally the android terminals
 	// will be automatically included anyway.
-	"github.com/zyedidia/tcell/terminfo"
-	"github.com/zyedidia/tcell/terminfo/dynamic"
+	"github.com/zyedidia/tcell/v2/terminfo"
+	"github.com/zyedidia/tcell/v2/terminfo/dynamic"
 )
 
 func loadDynamicTerminfo(term string) (*terminfo.Terminfo, error) {

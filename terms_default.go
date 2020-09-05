@@ -19,5 +19,5 @@ package tcell
 import (
 	// This imports the default terminal entries.  To disable, use the
 	// tcell_minimal build tag.
-	_ "github.com/zyedidia/tcell/terminfo/extended"
+	_ "github.com/zyedidia/tcell/v2/terminfo/extended"
 )

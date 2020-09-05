@@ -1,3 +1,5 @@
+// +build ignore
+
 // Copyright 2015 The TCell Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +24,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/zyedidia/tcell"
+	"github.com/zyedidia/tcell/v2"
 )
 
 func makebox(s tcell.Screen) {
@@ -44,7 +46,7 @@ func makebox(s tcell.Screen) {
 		rgb := tcell.NewHexColor(int32(rand.Int() & 0xffffff))
 		st = st.Background(rgb)
 	} else if s.Colors() > 1 {
-		st = st.Background(tcell.Color(rand.Int() % s.Colors()))
+		st = st.Background(tcell.Color(rand.Int()%s.Colors()) | tcell.ColorValid)
 	} else {
 		st = st.Reverse(rand.Int()%2 == 0)
 		gl = glyphs[rand.Int()%len(glyphs)]

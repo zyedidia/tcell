@@ -2,7 +2,7 @@
 
 package beterm
 
-import "github.com/zyedidia/tcell/terminfo"
+import "github.com/zyedidia/tcell/v2/terminfo"
 
 func init() {
 
@@ -23,6 +23,7 @@ func init() {
 		SetFg:        "\x1b[3%p1%dm",
 		SetBg:        "\x1b[4%p1%dm",
 		SetFgBg:      "\x1b[3%p1%d;4%p2%dm",
+		ResetFgBg:    "\x1b[m",
 		PadChar:      "\x00",
 		SetCursor:    "\x1b[%i%p1%d;%p2%dH",
 		CursorBack1:  "\b",

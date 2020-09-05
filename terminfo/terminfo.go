@@ -1,4 +1,4 @@
-// Copyright 2019 The TCell Authors
+// Copyright 2020 The TCell Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -63,6 +63,7 @@ type Terminfo struct {
 	ExitKeypad   string // rmkx
 	SetFg        string // setaf
 	SetBg        string // setab
+	ResetFgBg    string // op
 	SetCursor    string // cup
 	CursorBack1  string // cub1
 	CursorUp1    string // cuu1
@@ -158,6 +159,8 @@ type Terminfo struct {
 	KeyShfLeft   string // kLFT
 	KeyShfHome   string // kHOM
 	KeyShfEnd    string // kEND
+	KeyShfInsert string // kIC
+	KeyShfDelete string // kDC
 
 	// These are non-standard extensions to terminfo.  This includes
 	// true color support, and some additional keys.  Its kind of bizarre
@@ -165,6 +168,7 @@ type Terminfo struct {
 	// Terminal support for these are going to vary amongst XTerm
 	// emulations, so don't depend too much on them in your application.
 
+	StrikeThrough   string // smxx
 	SetFgBg         string // setfgbg
 	SetFgBgRGB      string // setfgbgrgb
 	SetFgRGB        string // setfrgb
@@ -209,7 +213,14 @@ type Terminfo struct {
 	KeyAltShfEnd    string
 	KeyMetaShfHome  string
 	KeyMetaShfEnd   string
+	Modifiers       int
+	TrueColor       bool // true if the terminal supports direct color
 }
+
+const (
+	ModifiersNone  = 0
+	ModifiersXTerm = 1
+)
 
 type stackElem struct {
 	s     string
@@ -287,13 +298,6 @@ func (st stack) PushBool(i bool) stack {
 		return st.PushInt(1)
 	}
 	return st.PushInt(0)
-}
-
-func nextch(s string, index int) (byte, int) {
-	if index < len(s) {
-		return s[index], index + 1
-	}
-	return 0, index
 }
 
 // static vars
@@ -736,7 +740,9 @@ func LookupTerminfo(name string) (*Terminfo, error) {
 
 	// If the name ends in -truecolor, then fabricate an entry
 	// from the corresponding -256color, -color, or bare terminal.
-	if t == nil && strings.HasSuffix(name, "-truecolor") {
+	if t.TrueColor {
+		addtruecolor = true
+	} else if t == nil && strings.HasSuffix(name, "-truecolor") {
 
 		suffixes := []string{
 			"-256color",

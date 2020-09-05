@@ -1,3 +1,5 @@
+// +build ignore
+
 // Copyright 2019 The TCell Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +22,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/zyedidia/tcell"
-	"github.com/zyedidia/tcell/encoding"
 	runewidth "github.com/mattn/go-runewidth"
+	"github.com/zyedidia/tcell/v2"
+	"github.com/zyedidia/tcell/v2/encoding"
 )
 
 var row = 0
