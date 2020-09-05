@@ -213,6 +213,10 @@ type Screen interface {
 	// encoded string requesting that the string be decoded and placed into
 	// the system clipboard.
 	SetClipboard(string, string) error
+
+	// Beep attempts to sound an OS-dependent audible alert and returns an error
+	// when unsuccessful.
+	Beep() error
 }
 
 // NewScreen returns a default Screen suitable for the user's terminal

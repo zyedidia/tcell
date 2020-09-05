@@ -521,3 +521,4 @@ func (s *simscreen) SetPaste(bool)         {}
 
 func (s *simscreen) GetClipboard(string) error         { return nil }
 func (s *simscreen) SetClipboard(string, string) error { return nil }
+func (s *simscreen) Beep() error                       { return nil }
