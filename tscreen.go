@@ -45,7 +45,7 @@ const (
 
 	pasteSet   = "\x1b]52;%c;%s\a"
 	pasteGet   = "\x1b]52;%c;?\a"
-	pasteClear = "\x1b]52;%c!\a"
+	pasteClear = "\x1b]52;%c!;\a"
 
 	pasteOSC52Begin = "\x1b]52;"
 	pasteOSC52End   = "\x1b\\"
@@ -1294,9 +1294,9 @@ func (t *tScreen) parseOSC52Paste(buf *bytes.Buffer, evs *[]Event) (bool, bool) 
 
 	prefixLen := len(pasteOSC52Begin) + 2
 	suffixLen := len(pasteOSC52End)
-	if bytes.HasPrefix(b, []byte(pasteOSC52Begin)) && len(b) > len(pasteOSC52Begin)+2 {
+	if bytes.HasPrefix(b, []byte(pasteOSC52Begin)) {
 		// OSC52 paste has started
-		if bytes.HasSuffix(b, []byte(pasteOSC52End)) {
+		if len(b) > len(pasteOSC52Begin)+2 && bytes.HasSuffix(b, []byte(pasteOSC52End)) {
 			// OSC52 paste has ended
 			payload := b[prefixLen : len(b)-suffixLen]
 			data := make([]byte, len(payload))
