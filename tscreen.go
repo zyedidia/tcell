@@ -43,9 +43,9 @@ const (
 	pasteBegin   = "\x1b[200~"
 	pasteEnd     = "\x1b[201~"
 
-	pasteSet   = "\x1b]52;%c;%s\a"
-	pasteGet   = "\x1b]52;%c;?\a"
-	pasteClear = "\x1b]52;%c!;\a"
+	pasteSet   = "\x1b]52;%c;%s\x1b\\"
+	pasteGet   = "\x1b]52;%c;?\x1b\\"
+	pasteClear = "\x1b]52;%c;!\x1b\\"
 
 	pasteOSC52Begin = "\x1b]52;"
 	pasteOSC52End   = "\x1b\\"
@@ -1361,7 +1361,7 @@ func (t *tScreen) parseOSC52Paste(buf *bytes.Buffer, evs *[]Event) (bool, bool) 
 
 	prefixLen := len(pasteOSC52Begin) + 2
 	suffixLen := len(pasteOSC52End)
-	if bytes.HasPrefix(b, []byte(pasteOSC52Begin)) {
+	if bytes.HasPrefix(b, []byte(pasteOSC52Begin)) || bytes.HasPrefix([]byte(pasteOSC52Begin), b) {
 		// OSC52 paste has started
 		if len(b) > len(pasteOSC52Begin)+2 && bytes.HasSuffix(b, []byte(pasteOSC52End)) {
 			// OSC52 paste has ended
@@ -1395,7 +1395,7 @@ func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer, evs *[]Event) (bool, bo
 
 	// Replace all carriage returns with newlines
 	str := string(bytes.Replace(b, []byte{'\r'}, []byte{'\n'}, -1))
-	if strings.HasPrefix(str, pasteBegin) {
+	if strings.HasPrefix(str, pasteBegin) || strings.HasPrefix(pasteBegin, str) {
 		// The bracketed paste has started
 		if strings.HasSuffix(str, pasteEnd) {
 			// The bracketed paste has ended
