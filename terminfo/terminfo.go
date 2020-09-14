@@ -218,8 +218,9 @@ type Terminfo struct {
 }
 
 const (
-	ModifiersNone  = 0
-	ModifiersXTerm = 1
+	ModifiersNone    = 0
+	ModifiersXTerm   = 1
+	ModifiersDynamic = 2
 )
 
 type stackElem struct {

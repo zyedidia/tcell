@@ -153,6 +153,7 @@ func LoadTerminfo(name string) (*terminfo.Terminfo, string, error) {
 	if t.Name != name {
 		return t, "", nil
 	}
+	t.Modifiers = terminfo.ModifiersDynamic
 	t.Aliases = tc.aliases
 	t.Colors = tc.getnum("colors")
 	t.Columns = tc.getnum("cols")
@@ -316,6 +317,13 @@ func LoadTerminfo(name string) (*terminfo.Terminfo, string, error) {
 		t.KeyAltShfEnd = "\x1b[1;4F"
 		t.KeyMetaShfHome = "\x1b[1;10H"
 		t.KeyMetaShfEnd = "\x1b[1;10F"
+
+	}
+
+	// If the terminal has all the 'standard' Xterm defines, use ModifiersXTerm to reconstruct
+	// ALL XTerm sequences dynamically
+	if t.KeyShfHome == "\x1b[1;2H" && t.KeyShfEnd == "\x1b[1;2F" && t.KeyShfRight == "\x1b[1;2C" && t.KeyShfLeft == "\x1b[1;2D" {
+		t.Modifiers = terminfo.ModifiersXTerm
 	}
 
 	// And the same thing for rxvt and workalikes (Eterm, aterm, etc.)

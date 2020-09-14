@@ -62,7 +62,7 @@ const (
 func NewTerminfoScreen() (Screen, error) {
 	ti, e := terminfo.LookupTerminfo(os.Getenv("TERM"))
 	if e != nil {
-		ti, e = loadDynamicTerminfo(os.Getenv("TERM"))
+		ti, e := loadDynamicTerminfo(os.Getenv("TERM"))
 		if e != nil {
 			return nil, e
 		}
@@ -413,6 +413,40 @@ func (t *tScreen) prepareKeys() {
 	t.prepareKeyMod(KeyDown, ModCtrl, ti.KeyCtrlDown)
 	t.prepareKeyMod(KeyHome, ModCtrl, ti.KeyCtrlHome)
 	t.prepareKeyMod(KeyEnd, ModCtrl, ti.KeyCtrlEnd)
+
+	if t.ti.Modifiers == terminfo.ModifiersDynamic {
+		t.prepareKeyMod(KeyUp, ModMeta, ti.KeyMetaUp)
+		t.prepareKeyMod(KeyDown, ModMeta, ti.KeyMetaDown)
+		t.prepareKeyMod(KeyRight, ModMeta, ti.KeyMetaRight)
+		t.prepareKeyMod(KeyLeft, ModMeta, ti.KeyMetaLeft)
+		t.prepareKeyMod(KeyUp, ModAlt, ti.KeyAltUp)
+		t.prepareKeyMod(KeyDown, ModAlt, ti.KeyAltDown)
+		t.prepareKeyMod(KeyRight, ModAlt, ti.KeyAltRight)
+		t.prepareKeyMod(KeyLeft, ModAlt, ti.KeyAltLeft)
+		t.prepareKeyMod(KeyUp, ModAlt|ModShift, ti.KeyAltShfUp)
+		t.prepareKeyMod(KeyDown, ModAlt|ModShift, ti.KeyAltShfDown)
+		t.prepareKeyMod(KeyRight, ModAlt|ModShift, ti.KeyAltShfRight)
+		t.prepareKeyMod(KeyLeft, ModAlt|ModShift, ti.KeyAltShfLeft)
+
+		t.prepareKeyMod(KeyUp, ModMeta|ModShift, ti.KeyMetaShfUp)
+		t.prepareKeyMod(KeyDown, ModMeta|ModShift, ti.KeyMetaShfDown)
+		t.prepareKeyMod(KeyRight, ModMeta|ModShift, ti.KeyMetaShfRight)
+		t.prepareKeyMod(KeyLeft, ModMeta|ModShift, ti.KeyMetaShfLeft)
+
+		t.prepareKeyMod(KeyUp, ModCtrl|ModShift, ti.KeyCtrlShfUp)
+		t.prepareKeyMod(KeyDown, ModCtrl|ModShift, ti.KeyCtrlShfDown)
+		t.prepareKeyMod(KeyRight, ModCtrl|ModShift, ti.KeyCtrlShfRight)
+		t.prepareKeyMod(KeyLeft, ModCtrl|ModShift, ti.KeyCtrlShfLeft)
+
+		t.prepareKeyMod(KeyHome, ModAlt, ti.KeyAltHome)
+		t.prepareKeyMod(KeyEnd, ModAlt, ti.KeyAltEnd)
+		t.prepareKeyMod(KeyHome, ModCtrl|ModShift, ti.KeyCtrlShfHome)
+		t.prepareKeyMod(KeyEnd, ModCtrl|ModShift, ti.KeyCtrlShfEnd)
+		t.prepareKeyMod(KeyHome, ModAlt|ModShift, ti.KeyAltShfHome)
+		t.prepareKeyMod(KeyEnd, ModAlt|ModShift, ti.KeyAltShfEnd)
+		t.prepareKeyMod(KeyHome, ModMeta|ModShift, ti.KeyMetaShfHome)
+		t.prepareKeyMod(KeyEnd, ModMeta|ModShift, ti.KeyMetaShfEnd)
+	}
 
 	// Sadly, xterm handling of keycodes is somewhat erratic.  In
 	// particular, different codes are sent depending on application
