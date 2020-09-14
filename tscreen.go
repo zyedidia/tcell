@@ -62,7 +62,7 @@ const (
 func NewTerminfoScreen() (Screen, error) {
 	ti, e := terminfo.LookupTerminfo(os.Getenv("TERM"))
 	if e != nil {
-		ti, e := loadDynamicTerminfo(os.Getenv("TERM"))
+		ti, e = loadDynamicTerminfo(os.Getenv("TERM"))
 		if e != nil {
 			return nil, e
 		}
