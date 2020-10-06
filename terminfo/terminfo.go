@@ -261,8 +261,17 @@ func (st stack) PopInt() (int, stack) {
 		if e.isInt {
 			return e.i, st
 		} else if e.isStr {
-			i, _ := strconv.Atoi(e.s)
-			return i, st
+			// If the string that was pushed was the representation
+			// of a number e.g. '123', then return the number. If the
+			// conversion doesn't work, assume the string pushed was
+			// intended to return, as an int, the ascii representation
+			// of the (one and only) character.
+			i, err := strconv.Atoi(e.s)
+			if err == nil {
+				return i, st
+			} else if len(e.s) >= 1 {
+				return int(e.s[0]), st
+			}
 		}
 	}
 	return 0, st
