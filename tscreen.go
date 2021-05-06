@@ -49,6 +49,8 @@ const (
 
 	pasteOSC52Begin = "\x1b]52;"
 	pasteOSC52End   = "\x1b\\"
+
+	setTitle = "\x1b]2;title\a"
 )
 
 // NewTerminfoScreen returns a Screen that uses the stock TTY interface
@@ -191,6 +193,7 @@ func (t *tScreen) Init() error {
 	t.TPuts(ti.EnableAcs)
 	t.TPuts(ti.Clear)
 	t.TPuts(pasteEnable)
+	t.TPuts(setTitle)
 
 	t.quit = make(chan struct{})
 
@@ -1425,20 +1428,17 @@ func (t *tScreen) parseOSC52Paste(buf *bytes.Buffer, evs *[]Event) (bool, bool) 
 }
 
 func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
-	b := buf.Bytes()
-
 	// Replace all carriage returns with newlines
-	str := string(bytes.Replace(b, []byte{'\r'}, []byte{'\n'}, -1))
+	str := strings.Replace(buf.String(), "\r", "\r", -1)
 	if strings.HasPrefix(str, pasteBegin) || strings.HasPrefix(pasteBegin, str) {
+		idx := strings.Index(str, pasteEnd)
 		// The bracketed paste has started
-		if strings.HasSuffix(str, pasteEnd) {
+		if idx != -1 && idx >= len(pasteBegin) {
 			// The bracketed paste has ended
 			// Strip out the start and end sequences
-			for i := 0; i < len(b); i++ {
-				by, _ := buf.ReadByte()
-				t.escbuf.WriteByte(by)
-			}
-			*evs = append(*evs, NewEventPaste(str[6:len(b)-6], t.escbuf.String()))
+			t.escbuf.Write(buf.Next(idx + len(pasteEnd)))
+			text := str[len(pasteBegin):idx]
+			*evs = append(*evs, NewEventPaste(text, t.escbuf.String()))
 			t.escbuf.Reset()
 			return true, true
 		}
