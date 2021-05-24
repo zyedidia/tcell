@@ -1428,7 +1428,7 @@ func (t *tScreen) parseOSC52Paste(buf *bytes.Buffer, evs *[]Event) (bool, bool) 
 
 func (t *tScreen) parseBracketedPaste(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 	// Replace all carriage returns with newlines
-	str := strings.Replace(buf.String(), "\r", "\r", -1)
+	str := strings.Replace(buf.String(), "\r", "\n", -1)
 	if strings.HasPrefix(str, pasteBegin) || strings.HasPrefix(pasteBegin, str) {
 		idx := strings.Index(str, pasteEnd)
 		// The bracketed paste has started
