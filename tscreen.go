@@ -193,7 +193,6 @@ func (t *tScreen) Init() error {
 	t.TPuts(ti.EnableAcs)
 	t.TPuts(ti.Clear)
 	t.TPuts(pasteEnable)
-	t.TPuts(setTitle)
 
 	t.quit = make(chan struct{})
 
