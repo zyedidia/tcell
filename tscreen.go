@@ -1484,6 +1484,26 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 
 		partials := 0
 
+		if b[0] == '\x1b' && len(t.rawseq) > 0 {
+			strb := string(b)
+			completed := false
+			for _, r := range t.rawseq {
+				if strings.HasPrefix(strb, r) {
+					// a registered raw sequence matched the prefix
+					res = append(res, NewEventRaw(r))
+					t.escbuf.Reset()
+					for i := 0; i < len(r); i++ {
+						buf.ReadByte()
+					}
+					completed = true
+					break
+				}
+			}
+			if completed {
+				continue
+			}
+		}
+
 		if t.paste && t.parsePaste(buf, &res) {
 			continue
 		}
@@ -1531,23 +1551,6 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 
 		if partials == 0 || expire {
 			if b[0] == '\x1b' {
-				strb := string(b)
-				completed := false
-				for _, r := range t.rawseq {
-					if strings.HasPrefix(strb, r) {
-						// a registered raw sequence matched the prefix
-						res = append(res, NewEventRaw(r))
-						t.escbuf.Reset()
-						for i := 0; i < len(r); i++ {
-							buf.ReadByte()
-						}
-						completed = true
-						break
-					}
-				}
-				if completed {
-					continue
-				}
 				if len(b) == 1 {
 					res = append(res, NewEventKey(KeyEsc, 0, ModNone, "\x1b"))
 					t.escbuf.Reset()
