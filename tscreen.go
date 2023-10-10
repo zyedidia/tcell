@@ -218,6 +218,11 @@ func (t *tScreen) SetPaste(p bool) {
 }
 
 func (t *tScreen) RegisterRawSeq(r string) {
+	for _, seq := range t.rawseq {
+		if seq == r {
+			return
+		}
+	}
 	t.rawseq = append(t.rawseq, r)
 }
 
