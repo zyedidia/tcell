@@ -1398,6 +1398,26 @@ func (t *tScreen) parsePaste(buf *bytes.Buffer, evs *[]Event) bool {
 	return false
 }
 
+func (t *tScreen) parseRegisteredRawSeq(buf *bytes.Buffer, evs *[]Event) bool {
+	b := buf.Bytes()
+
+	if b[0] == '\x1b' && len(t.rawseq) > 0 {
+		strb := string(b)
+		for _, r := range t.rawseq {
+			if strings.HasPrefix(strb, r) {
+				// a registered raw sequence matched the prefix
+				*evs = append(*evs, NewEventRaw(r))
+				t.escbuf.Reset()
+				for i := 0; i < len(r); i++ {
+					buf.ReadByte()
+				}
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (t *tScreen) parseOSC52Paste(buf *bytes.Buffer, evs *[]Event) (bool, bool) {
 	str := buf.String()
 	b := buf.Bytes()
@@ -1484,24 +1504,8 @@ func (t *tScreen) collectEventsFromInput(buf *bytes.Buffer, expire bool) []Event
 
 		partials := 0
 
-		if b[0] == '\x1b' && len(t.rawseq) > 0 {
-			strb := string(b)
-			completed := false
-			for _, r := range t.rawseq {
-				if strings.HasPrefix(strb, r) {
-					// a registered raw sequence matched the prefix
-					res = append(res, NewEventRaw(r))
-					t.escbuf.Reset()
-					for i := 0; i < len(r); i++ {
-						buf.ReadByte()
-					}
-					completed = true
-					break
-				}
-			}
-			if completed {
-				continue
-			}
+		if t.parseRegisteredRawSeq(buf, &res) {
+			continue
 		}
 
 		if t.paste && t.parsePaste(buf, &res) {
