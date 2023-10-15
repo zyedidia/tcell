@@ -226,6 +226,16 @@ func (t *tScreen) RegisterRawSeq(r string) {
 	t.rawseq = append(t.rawseq, r)
 }
 
+func (t *tScreen) UnregisterRawSeq(r string) {
+	for i, seq := range t.rawseq {
+		if seq == r {
+			t.rawseq[i] = t.rawseq[len(t.rawseq)-1]
+			t.rawseq = t.rawseq[:len(t.rawseq)-1]
+			break
+		}
+	}
+}
+
 func (t *tScreen) prepareKeyMod(key Key, mod ModMask, val string) {
 	if val != "" {
 		// Do not override codes that already exist

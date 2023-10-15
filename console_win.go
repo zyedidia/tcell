@@ -1183,8 +1183,9 @@ func (s *cScreen) HasKey(k Key) bool {
 	return valid[k]
 }
 
-func (s *cScreen) RegisterRawSeq(string) {}
-func (s *cScreen) SetPaste(bool)         {}
+func (s *cScreen) RegisterRawSeq(string)   {}
+func (s *cScreen) UnregisterRawSeq(string) {}
+func (s *cScreen) SetPaste(bool)           {}
 
 func (s *cScreen) GetClipboard(string) error {
 	return errors.New("Not supported on Windows")

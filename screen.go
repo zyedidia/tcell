@@ -199,6 +199,11 @@ type Screen interface {
 	// Not defined for non-posix systems
 	RegisterRawSeq(string)
 
+	// UnregisterRawSeq unregisters a user-defined escape code that should
+	// be parsed by the screen
+	// Not defined for non-posix systems
+	UnregisterRawSeq(string)
+
 	// SetPaste sets whether or not this screen should be expecting paste
 	// events. When paste is true, all key events with multiple bytes
 	// will be treated as pastes rather than as the user typing really
