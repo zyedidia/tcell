@@ -146,6 +146,8 @@ const (
 	vtSetBg      = "\x1b[48;5;%dm"
 	vtSetFgRGB   = "\x1b[38;2;%d;%d;%dm" // RGB
 	vtSetBgRGB   = "\x1b[48;2;%d;%d;%dm" // RGB
+	vtEnterCA    = "\x1b[?1049h\x1b[22;0;0t" // activate alternate screen + store title
+	vtExitCA     = "\x1b[?1049l\x1b[23;0;0t" // deactivate alternate screen + restore title
 )
 
 // NewConsoleScreen returns a Screen for the Windows console associated
@@ -215,20 +217,18 @@ func (s *cScreen) Init() error {
 
 	s.fini = false
 	s.setInMode(modeResizeEn | modeExtndFlg)
-
-	// 24-bit color is opt-in for now, because we can't figure out
-	// to make it work consistently.
-	if s.truecolor {
-		s.setOutMode(modeVtOutput | modeNoAutoNL | modeCookedOut)
-		var omode uint32
-		s.getOutMode(&omode)
-		if omode&modeVtOutput == modeVtOutput {
-			s.vten = true
-		} else {
-			s.truecolor = false
-		}
+	s.setOutMode(modeVtOutput | modeNoAutoNL | modeCookedOut)
+	var omode uint32
+	s.getOutMode(&omode)
+	if omode&modeVtOutput == modeVtOutput {
+		s.vten = true
 	} else {
+		s.truecolor = false
 		s.setOutMode(0)
+	}
+
+	if s.vten {
+		s.emitVtString(vtEnterCA)
 	}
 
 	s.clearScreen(s.style)
@@ -257,6 +257,10 @@ func (s *cScreen) Fini() {
 }
 
 func (s *cScreen) finish() {
+	if s.vten {
+		s.emitVtString(vtExitCA)
+	}
+
 	s.Lock()
 	s.style = StyleDefault
 	s.curx = -1
