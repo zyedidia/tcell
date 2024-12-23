@@ -31,7 +31,7 @@ type termiosPrivate struct {
 
 func (t *tScreen) termioInit() error {
 	var e error
-	var raw *unix.Termios
+	var raw unix.Termios
 	var tio *unix.Termios
 
 	if t.in, e = os.OpenFile("/dev/tty", os.O_RDONLY, 0); e != nil {
@@ -48,14 +48,7 @@ func (t *tScreen) termioInit() error {
 
 	t.tiosp = &termiosPrivate{tio: tio}
 
-	// make a local copy, to make it raw
-	raw = &unix.Termios{
-		Cflag: tio.Cflag,
-		Oflag: tio.Oflag,
-		Iflag: tio.Iflag,
-		Lflag: tio.Lflag,
-		Cc:    tio.Cc,
-	}
+	raw = *tio
 	raw.Iflag &^= (unix.IGNBRK | unix.BRKINT | unix.PARMRK | unix.ISTRIP |
 		unix.INLCR | unix.IGNCR | unix.ICRNL | unix.IXON)
 	raw.Oflag &^= unix.OPOST
@@ -71,7 +64,7 @@ func (t *tScreen) termioInit() error {
 	raw.Cc[unix.VMIN] = 1
 	raw.Cc[unix.VTIME] = 0
 
-	e = unix.IoctlSetTermios(int(t.out.(*os.File).Fd()), unix.TCSETS, raw)
+	e = unix.IoctlSetTermios(int(t.out.(*os.File).Fd()), unix.TCSETS, &raw)
 	if e != nil {
 		goto failed
 	}
