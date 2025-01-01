@@ -38,20 +38,20 @@ package tcell
 import (
 	"os/signal"
 	"syscall"
-	"unsafe"
 
 	"github.com/zyedidia/poller"
+
+	"golang.org/x/sys/unix"
 )
 
-type termiosPrivate syscall.Termios
+type termiosPrivate struct {
+	tio *unix.Termios
+}
 
 func (t *tScreen) termioInit() error {
 	var e error
-	var newtios termiosPrivate
-	var fd uintptr
-	var tios uintptr
-	var ioc uintptr
-	t.tiosp = &termiosPrivate{}
+	var raw unix.Termios
+	var tio *unix.Termios
 
 	if t.in, e = poller.Open("/dev/tty", poller.O_RO); e != nil {
 		goto failed
@@ -60,29 +60,24 @@ func (t *tScreen) termioInit() error {
 		goto failed
 	}
 
-	tios = uintptr(unsafe.Pointer(t.tiosp))
-	ioc = uintptr(syscall.TIOCGETA)
-	fd = uintptr(t.out.(*poller.FD).Sysfd())
-	if _, _, e1 := syscall.Syscall6(syscall.SYS_IOCTL, fd, ioc, tios, 0, 0, 0); e1 != 0 {
-		e = e1
+	tio, e = unix.IoctlGetTermios(int(t.out.(*poller.FD).Sysfd()), getTermios)
+	if e != nil {
 		goto failed
 	}
 
-	newtios = *t.tiosp
-	newtios.Iflag &^= syscall.IGNBRK | syscall.BRKINT | syscall.PARMRK |
-		syscall.ISTRIP | syscall.INLCR | syscall.IGNCR |
-		syscall.ICRNL | syscall.IXON
-	newtios.Oflag &^= syscall.OPOST
-	newtios.Lflag &^= syscall.ECHO | syscall.ECHONL | syscall.ICANON |
-		syscall.ISIG | syscall.IEXTEN
-	newtios.Cflag &^= syscall.CSIZE | syscall.PARENB
-	newtios.Cflag |= syscall.CS8
+	t.tiosp = &termiosPrivate{tio: tio}
 
-	tios = uintptr(unsafe.Pointer(&newtios))
+	raw = *tio
+	raw.Iflag &^= (unix.IGNBRK | unix.BRKINT | unix.PARMRK | unix.ISTRIP |
+		unix.INLCR | unix.IGNCR | unix.ICRNL | unix.IXON)
+	raw.Oflag &^= unix.OPOST
+	raw.Lflag &^= (unix.ECHO | unix.ECHONL | unix.ICANON | unix.ISIG |
+		unix.IEXTEN)
+	raw.Cflag &^= (unix.CSIZE | unix.PARENB)
+	raw.Cflag |= unix.CS8
 
-	ioc = uintptr(syscall.TIOCSETA)
-	if _, _, e1 := syscall.Syscall6(syscall.SYS_IOCTL, fd, ioc, tios, 0, 0, 0); e1 != 0 {
-		e = e1
+	e = unix.IoctlSetTermios(int(t.out.(*poller.FD).Sysfd()), setTermios, &raw)
+	if e != nil {
 		goto failed
 	}
 
@@ -110,11 +105,8 @@ func (t *tScreen) termioFini() {
 
 	<-t.indoneq
 
-	if t.out != nil {
-		fd := uintptr(t.out.(*poller.FD).Sysfd())
-		ioc := uintptr(syscall.TIOCSETAF)
-		tios := uintptr(unsafe.Pointer(t.tiosp))
-		syscall.Syscall6(syscall.SYS_IOCTL, fd, ioc, tios, 0, 0, 0)
+	if t.out != nil && t.tiosp != nil {
+		unix.IoctlSetTermios(int(t.out.(*poller.FD).Sysfd()), flushTermios, t.tiosp.tio)
 		t.out.(*poller.FD).Close()
 	}
 
@@ -124,16 +116,11 @@ func (t *tScreen) termioFini() {
 }
 
 func (t *tScreen) getWinSize() (int, int, error) {
-
-	fd := uintptr(t.out.(*poller.FD).Sysfd())
-	dim := [4]uint16{}
-	dimp := uintptr(unsafe.Pointer(&dim))
-	ioc := uintptr(syscall.TIOCGWINSZ)
-	if _, _, err := syscall.Syscall6(syscall.SYS_IOCTL,
-		fd, ioc, dimp, 0, 0, 0); err != 0 {
+	wsz, err := unix.IoctlGetWinsize(int(t.out.(*poller.FD).Sysfd()), unix.TIOCGWINSZ)
+	if err != nil {
 		return -1, -1, err
 	}
-	return int(dim[1]), int(dim[0]), nil
+	return int(wsz.Col), int(wsz.Row), nil
 }
 
 func (t *tScreen) Beep() error {

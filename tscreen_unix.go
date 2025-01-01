@@ -1,6 +1,6 @@
-// +build solaris illumos
+// +build linux solaris freebsd netbsd openbsd dragonfly
 
-// Copyright 2020 The TCell Authors
+// Copyright 2019 The TCell Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -19,6 +19,7 @@ package tcell
 import (
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -40,7 +41,7 @@ func (t *tScreen) termioInit() error {
 		goto failed
 	}
 
-	tio, e = unix.IoctlGetTermios(int(t.out.(*os.File).Fd()), unix.TCGETS)
+	tio, e = unix.IoctlGetTermios(int(t.out.(*os.File).Fd()), getTermios)
 	if e != nil {
 		goto failed
 	}
@@ -48,10 +49,11 @@ func (t *tScreen) termioInit() error {
 	t.tiosp = &termiosPrivate{tio: tio}
 
 	raw = *tio
-	raw.Iflag &^= (unix.IGNBRK | unix.BRKINT | unix.PARMRK | unix.INLCR |
-		unix.IGNCR | unix.ICRNL | unix.IXON)
+	raw.Iflag &^= (unix.IGNBRK | unix.BRKINT | unix.PARMRK | unix.ISTRIP |
+		unix.INLCR | unix.IGNCR | unix.ICRNL | unix.IXON)
 	raw.Oflag &^= unix.OPOST
-	raw.Lflag &^= (unix.ECHO | unix.ECHONL | unix.ICANON | unix.ISIG | unix.IEXTEN)
+	raw.Lflag &^= (unix.ECHO | unix.ECHONL | unix.ICANON | unix.ISIG |
+		unix.IEXTEN)
 	raw.Cflag &^= (unix.CSIZE | unix.PARENB)
 	raw.Cflag |= unix.CS8
 
@@ -62,7 +64,7 @@ func (t *tScreen) termioInit() error {
 	raw.Cc[unix.VMIN] = 1
 	raw.Cc[unix.VTIME] = 0
 
-	e = unix.IoctlSetTermios(int(t.out.(*os.File).Fd()), unix.TCSETS, &raw)
+	e = unix.IoctlSetTermios(int(t.out.(*os.File).Fd()), setTermios, &raw)
 	if e != nil {
 		goto failed
 	}
@@ -92,20 +94,44 @@ func (t *tScreen) termioFini() {
 	<-t.indoneq
 
 	if t.out != nil && t.tiosp != nil {
-		unix.IoctlSetTermios(int(t.out.(*os.File).Fd()), unix.TCSETSF, t.tiosp.tio)
+		unix.IoctlSetTermios(int(t.out.(*os.File).Fd()), flushTermios, t.tiosp.tio)
 		t.out.(*os.File).Close()
 	}
+
 	if t.in != nil {
 		t.in.(*os.File).Close()
 	}
 }
 
 func (t *tScreen) getWinSize() (int, int, error) {
+
 	wsz, err := unix.IoctlGetWinsize(int(t.out.(*os.File).Fd()), unix.TIOCGWINSZ)
 	if err != nil {
 		return -1, -1, err
 	}
-	return int(wsz.Col), int(wsz.Row), nil
+	cols := int(wsz.Col)
+	rows := int(wsz.Row)
+	if cols == 0 {
+		colsEnv := os.Getenv("COLUMNS")
+		if colsEnv != "" {
+			if cols, err = strconv.Atoi(colsEnv); err != nil {
+				return -1, -1, err
+			}
+		} else {
+			cols = t.ti.Columns
+		}
+	}
+	if rows == 0 {
+		rowsEnv := os.Getenv("LINES")
+		if rowsEnv != "" {
+			if rows, err = strconv.Atoi(rowsEnv); err != nil {
+				return -1, -1, err
+			}
+		} else {
+			rows = t.ti.Lines
+		}
+	}
+	return cols, rows, nil
 }
 
 func (t *tScreen) Beep() error {
