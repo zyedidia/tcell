@@ -284,6 +284,14 @@ func getinfo(name string) (*terminfo.Terminfo, string, error) {
 	// keys, but it's nicer to match them to modifiers.
 	if tc.getstr("kRIT") == "\x1b[1;2C" {
 		t.Modifiers = terminfo.ModifiersXTerm
+	// And the same thing for rxvt
+	// It seems that urxvt at least send ESC as ALT prefix for these,
+	// although some places seem to indicate a separate ALT key sequence.
+	// Users are encouraged to update to an emulator that more closely
+	// matches xterm for better functionality.
+	} else if tc.getstr("kRIT") == "\x1b[c" && tc.getstr("kLFT") == "\x1b[d" &&
+			tc.getstr("kHOM") == "\x1b[7$" && tc.getstr("kEND") == "\x1b[8$" {
+		t.Modifiers = terminfo.ModifiersUrxvt
 	} else {
 		// Lookup high level function keys.
 		t.KeyShfInsert = tc.getstr("kIC")
@@ -344,24 +352,6 @@ func getinfo(name string) (*terminfo.Terminfo, string, error) {
 		t.KeyF62 = tc.getstr("kf62")
 		t.KeyF63 = tc.getstr("kf63")
 		t.KeyF64 = tc.getstr("kf64")
-	}
-
-	// And the same thing for rxvt.
-	// It seems that urxvt at least send ESC as ALT prefix for these,
-	// although some places seem to indicate a separate ALT key sequence.
-	// Users are encouraged to update to an emulator that more closely
-	// matches xterm for better functionality.
-	if t.KeyShfRight == "\x1b[c" && t.KeyShfLeft == "\x1b[d" {
-		t.KeyShfUp = "\x1b[a"
-		t.KeyShfDown = "\x1b[b"
-		t.KeyCtrlUp = "\x1b[Oa"
-		t.KeyCtrlDown = "\x1b[Ob"
-		t.KeyCtrlRight = "\x1b[Oc"
-		t.KeyCtrlLeft = "\x1b[Od"
-	}
-	if t.KeyShfHome == "\x1b[7$" && t.KeyShfEnd == "\x1b[8$" {
-		t.KeyCtrlHome = "\x1b[7^"
-		t.KeyCtrlEnd = "\x1b[8^"
 	}
 
 	// Technically the RGB flag that is provided for xterm-direct is not

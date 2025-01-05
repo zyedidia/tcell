@@ -367,22 +367,11 @@ func LoadTerminfo(name string) (*terminfo.Terminfo, string, error) {
 	// ALL XTerm sequences dynamically
 	if t.KeyShfHome == "\x1b[1;2H" && t.KeyShfEnd == "\x1b[1;2F" && t.KeyShfRight == "\x1b[1;2C" && t.KeyShfLeft == "\x1b[1;2D" {
 		t.Modifiers = terminfo.ModifiersXTerm
-	}
-
 	// And the same thing for rxvt and workalikes (Eterm, aterm, etc.)
 	// It seems that urxvt at least send escaped as ALT prefix for these,
 	// although some places seem to indicate a separate ALT key sesquence.
-	if t.KeyShfRight == "\x1b[c" && t.KeyShfLeft == "\x1b[d" {
-		t.KeyShfUp = "\x1b[a"
-		t.KeyShfDown = "\x1b[b"
-		t.KeyCtrlUp = "\x1b[Oa"
-		t.KeyCtrlDown = "\x1b[Ob"
-		t.KeyCtrlRight = "\x1b[Oc"
-		t.KeyCtrlLeft = "\x1b[Od"
-	}
-	if t.KeyShfHome == "\x1b[7$" && t.KeyShfEnd == "\x1b[8$" {
-		t.KeyCtrlHome = "\x1b[7^"
-		t.KeyCtrlEnd = "\x1b[8^"
+	} else if t.KeyShfHome == "\x1b[7$" && t.KeyShfEnd == "\x1b[8$" && t.KeyShfRight == "\x1b[c" && t.KeyShfLeft == "\x1b[d" {
+		t.Modifiers = terminfo.ModifiersUrxvt
 	}
 
 	// If the kmous entry is present, then we need to record the

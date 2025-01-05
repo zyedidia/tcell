@@ -334,6 +334,52 @@ func (t *tScreen) prepareXtermModifiers() {
 	t.prepareKeyModXTerm(KeyF12, t.ti.KeyF12)
 }
 
+func (t *tScreen) prepareKeyModUrxvt(key Key, val string) {
+	val = val[:len(val)-1]
+	t.prepareKeyMod(key, ModShift, val+"$")
+	t.prepareKeyMod(key, ModCtrl, val+"^")
+	t.prepareKeyMod(key, ModCtrl|ModShift, val+"@")
+}
+
+func (t *tScreen) prepareUrxvtModifiers() {
+	if t.ti.Modifiers != terminfo.ModifiersUrxvt {
+		return
+	}
+	t.prepareKeyModUrxvt(KeyInsert, t.ti.KeyInsert)
+	t.prepareKeyModUrxvt(KeyDelete, t.ti.KeyDelete)
+	t.prepareKeyModUrxvt(KeyPgUp, t.ti.KeyPgUp)
+	t.prepareKeyModUrxvt(KeyPgDn, t.ti.KeyPgDn)
+	t.prepareKeyModUrxvt(KeyHome, t.ti.KeyHome)
+	t.prepareKeyModUrxvt(KeyEnd, t.ti.KeyEnd)
+	for i := 1; i <= 4; i++ {
+		key := Key(int(KeyUp)-1+i)
+		t.prepareKeyMod(key, ModShift, fmt.Sprintf("\x1b[%c", 96+i))
+		t.prepareKeyMod(key, ModCtrl, fmt.Sprintf("\x1bO%c", 96+i))
+		// we implement Ctrl-Shift as "application mode" for cursor keys
+		// in reality, urxvt treats Ctrl-Shift like Shift
+		t.prepareKeyMod(key, ModCtrl|ModShift, fmt.Sprintf("\x1bO%c", 64+i))
+	}
+	for i := 1; i <= 10; i++ {
+		key := Key(int(KeyF1)-1+i)
+		j := 10+i
+		if i >=6 { j++ }
+		t.prepareKeyModReplace(key, key+22, ModCtrl, fmt.Sprintf("\x1b[%d^", j))
+		j = 22+i
+		if i >=5 { j++ }
+		if i >=7 { j++ }
+		t.prepareKeyModReplace(key, key+10, ModShift, fmt.Sprintf("\x1b[%d~", j))
+		t.prepareKeyModReplace(key, key+32, ModCtrl|ModShift, fmt.Sprintf("\x1b[%d^", j))
+		key = Key(int(KeyF11)-1+i)
+		// urxvt treats F11 to F20 like Shift-F1 to Shift-F10, ditto plus Ctrl
+		// t.prepareKeyMod(key, ModNone, fmt.Sprintf("\x1b[%d~", j))
+		t.prepareKeyMod(key, ModNone, fmt.Sprintf("\x1b[%d#", j)) // non-standard!
+		t.prepareKeyModReplace(key, key+10, ModShift, fmt.Sprintf("\x1b[%d$", j))
+		// t.prepareKeyMod(key, ModCtrl, fmt.Sprintf("\x1b[%d^", j))
+		t.prepareKeyMod(key, ModCtrl, fmt.Sprintf("\x1b[%d&", j)) // non-standard!
+		t.prepareKeyModReplace(key, key+32, ModCtrl|ModShift, fmt.Sprintf("\x1b[%d@", j))
+	}
+}
+
 func (t *tScreen) prepareKey(key Key, val string) {
 	t.prepareKeyMod(key, ModNone, val)
 }
@@ -470,6 +516,8 @@ func (t *tScreen) prepareKeys() {
 		t.prepareKeyMod(KeyHome, ModMeta|ModShift, ti.KeyMetaShfHome)
 		t.prepareKeyMod(KeyEnd, ModMeta|ModShift, ti.KeyMetaShfEnd)
 	}
+
+	t.prepareUrxvtModifiers() // must be before application mode cursor keys below
 
 	// Sadly, xterm handling of keycodes is somewhat erratic.  In
 	// particular, different codes are sent depending on application

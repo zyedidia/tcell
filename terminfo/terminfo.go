@@ -221,6 +221,7 @@ const (
 	ModifiersNone    = 0
 	ModifiersXTerm   = 1
 	ModifiersDynamic = 2
+	ModifiersUrxvt   = 3
 )
 
 type stackElem struct {
